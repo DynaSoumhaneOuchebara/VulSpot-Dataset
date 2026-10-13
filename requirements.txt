@@ -1,0 +1,14 @@
+# Python 3.9 compatible pins. py-tree-sitter >=0.24 needs Python >=3.10, so we
+# stay on 0.23 and pin grammar wheels built with language ABI 14.
+requests>=2.31
+pyyaml>=6.0
+pandas>=2.0
+pyarrow>=14.0
+tqdm>=4.66
+tree-sitter>=0.23,<0.24
+tree-sitter-c==0.23.4
+tree-sitter-cpp==0.23.4
+tree-sitter-language-pack>=0.7
+datasketch>=1.6
+huggingface_hub>=0.25
+datasets>=2.19

@@ -1,0 +1,156 @@
+# VulSpot pipeline configuration. All paths are relative to the project root.
+dataset_name: VulSpot
+
+paths:
+  raw_nvd: data/raw/nvd            # one JSON per 120-day window + state file
+  raw_commits: data/raw/commits    # data/raw/commits/<owner>__<repo>/<sha>/
+  interim: data/interim            # stage outputs (jsonl / parquet)
+  out: data/out                    # final datasets
+  logs: logs
+
+nvd:
+  base_url: https://services.nvd.nist.gov/rest/json/cves/2.0
+  window_days: 120                 # NVD API 2.0 max range is 120 days
+  results_per_page: 2000
+  start_date: "1988-01-01"         # NVD lists a few CVE-1999-* entries as published in 1988-1998
+  cutoff_date: null                # null = today (UTC)
+  # requests per 30 s: 5 without key, 50 with key
+  sleep_without_key: 6.5
+  sleep_with_key: 0.7
+  max_retries: 8
+
+refs:
+  # Only references carrying this NVD tag are considered patch links.
+  require_tag: Patch
+  # Also accept untagged commit URLs? SecVulEval used the Patch tag only.
+  accept_untagged_commit_urls: false
+  kernel_org_repo: torvalds/linux
+  # Hosts we parse. Others are counted and reported in 02's summary.
+  github_hosts: [github.com, www.github.com]
+
+github:
+  api_url: https://api.github.com
+  raw_url: https://raw.githubusercontent.com
+  # Requests/hour: 60 anonymous, 5000 with token. We pace conservatively.
+  min_interval_s: 0.75
+  max_retries: 8
+  max_files_per_commit: 300        # REST returns at most 300 files; larger commits are skipped
+  max_file_bytes: 2000000          # skip blobs larger than this (generated code, data)
+  fetch_file_contents: true
+  drop_merge_commits: true
+
+commit_message:
+  # Lines matching any regex (case-insensitive, anchored at line start) are removed
+  # to produce `commit_message`. `commit_message_raw` is always kept.
+  trailer_patterns:
+    - '^(Signed-off-by|Reviewed-by|Acked-by|Tested-by|Reported-by|Suggested-by|Co-authored-by|Co-developed-by|Cc|CC|Reviewed-on|Reviewed-off-by|Change-Id|Commit-Queue|Cr-Commit-Position|Cr-Original-Commit-Position|Bug|BUG|Fixes|Link|Closes|Resolves|Refs|See-also|Message-Id|Message-ID|Patchwork-Id|In-Reply-To|References|Reported-and-tested-by|Original-Reviewed-on|Original-Change-Id|Auto-Submit|Owners-Override|Reviewed-by:|Merged-by|Approved-by|Sponsored-by|Obtained-from|MFC after|Differential Revision|Submitted by|Security):'
+    - '^(cherry picked from commit|\(cherry picked from commit)'
+    - '^[A-Za-z-]+: .*<[^@\s]+@[^>\s]+>\s*$'   # any trailer that ends with an email
+    - '^\s*<?[^@\s]+@[^>\s]+>?\s*$'           # bare email lines
+
+languages:
+  # Dataset `cpp`: only these extensions.
+  cpp_extensions: [".c", ".cc", ".cpp", ".cxx", ".c++", ".C", ".h", ".hh", ".hpp", ".hxx", ".h++", ".inl", ".ipp"]
+  # Dataset `multi`: extension -> tree-sitter-language-pack grammar name.
+  # Anything not listed is treated as a non-code file and dropped in filter (1).
+  extension_map:
+    ".c": c
+    ".h": c              # resolved to cpp if the file contains C++ constructs (see langs.py)
+    ".cc": cpp
+    ".cpp": cpp
+    ".cxx": cpp
+    ".c++": cpp
+    ".C": cpp
+    ".hh": cpp
+    ".hpp": cpp
+    ".hxx": cpp
+    ".h++": cpp
+    ".inl": cpp
+    ".ipp": cpp
+    ".py": python
+    ".pyi": python
+    ".java": java
+    ".js": javascript
+    ".mjs": javascript
+    ".cjs": javascript
+    ".jsx": javascript
+    ".ts": typescript
+    ".tsx": tsx
+    ".go": go
+    ".rs": rust
+    ".php": php
+    ".phtml": php
+    ".rb": ruby
+    ".cs": csharp
+    ".kt": kotlin
+    ".kts": kotlin
+    ".swift": swift
+    ".scala": scala
+    ".lua": lua
+    ".pl": perl
+    ".pm": perl
+    ".m": objc
+    ".mm": objc
+    ".dart": dart
+    ".ex": elixir
+    ".exs": elixir
+    ".erl": erlang
+    ".hs": haskell
+    ".ml": ocaml
+    ".zig": zig
+    ".sh": bash
+    ".bash": bash
+  # Test / fuzz paths: flagged is_test_file, excluded from tangled-change counts and positives.
+  test_path_patterns:
+    - '(^|/)tests?(/|$)'
+    - '(^|/)testing(/|$)'
+    - '(^|/)selftests?(/|$)'
+    - '(^|/)fuzz(ers|ing)?(/|$)'
+    - '(^|/)__tests__(/|$)'
+    - '(^|/)spec(/|$)'
+    - '(^|/)t(/|$)'
+    - '_test\.[a-z+]+$'
+    - '[-_.]tests?\.[a-z+]+$'
+    - '^test_[^/]+$'
+    - '(^|/)test_[^/]+\.[a-z]+$'
+    - '[Tt]est[A-Z][^/]*\.(java|cs|kt|swift|scala)$'
+    - '(^|/)fuzz_[^/]+\.[a-z+]+$'
+    - '_fuzzer\.[a-z+]+$'
+
+extraction:
+  same_file_callee_defs_max_chars: 4000   # per function; 0 disables
+  same_file_callee_defs_max_count: 8
+  max_func_lines: 3000                    # skip pathological functions
+  untouched_per_file_max: 20              # nearest unchanged functions kept as negatives
+  # Strip comments before hashing for norm_hash
+  identifier_norm: false                  # keep identifiers (PrimeVul-style); set true to alpha-rename
+
+filters:
+  drop_multi_commit_cves: true
+  keep_unmentioned_in_multi_function_files: false
+  # When a function is in a multi-function file, it is 'low' if mentioned in commit msg.
+  mention_min_name_len: 3
+
+dedup:
+  minhash_num_perm: 128
+  minhash_shingle_k: 5
+  jaccard_threshold: 0.8
+
+kernel_cna:
+  source_identifiers: ["416baaa9-dc9f-4396-8d5f-8c081fb06d67", "cve@kernel.org", "security@kernel.org"]
+  start_date: "2024-02-01"
+
+balanced:
+  # Per-project cap for the balanced variant. `auto` caps post-start_date kernel-CNA
+  # CVEs at the project's pre-2024 average yearly CVE count; an integer caps CVEs/year.
+  linux_post_2024_cap_per_year: auto
+  other_projects_cap_per_year: null
+
+splits:
+  chrono: {train: 0.8, val: 0.1, test: 0.1}
+  project_holdout_fraction: 0.1          # fraction of projects (by CVE count) held out
+  seed: 13
+
+hf:
+  repo_id: DynaOuchebara/VulSpot
+  private: false

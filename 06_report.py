@@ -1,0 +1,191 @@
+#!/usr/bin/env python
+"""Stage 6: write report.md from the built datasets and the stage summaries.
+
+    python 06_report.py
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections import Counter
+from pathlib import Path
+
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from vulspot.config import load_config
+from vulspot.io import iter_jsonl, read_json
+from vulspot.log import get_logger
+
+SECVUL_CVES = 5867
+SECVUL_FUNCS = 25440
+
+
+def _load(out_dir: Path) -> pd.DataFrame | None:
+    p = out_dir / "data.parquet"
+    if p.exists():
+        return pd.read_parquet(p)
+    p = out_dir / "data.jsonl.gz"
+    if p.exists():
+        return pd.read_json(p, lines=True)
+    return None
+
+
+def _top(series, n=10):
+    return series.value_counts().head(n)
+
+
+def _md_table(d: dict, cols=("key", "count")) -> str:
+    lines = [f"| {cols[0]} | {cols[1]} |", "|---|---|"]
+    for k, v in d.items():
+        lines.append(f"| {k} | {v} |")
+    return "\n".join(lines) if len(lines) > 2 else "_none_"
+
+
+def _cwe_counts(df: pd.DataFrame) -> Counter:
+    c = Counter()
+    for xs in df["cwe_list"]:
+        if isinstance(xs, list):
+            for x in xs:
+                c[x] += 1
+        elif isinstance(xs, str):
+            try:
+                for x in json.loads(xs):
+                    c[x] += 1
+            except json.JSONDecodeError:
+                pass
+    return c
+
+
+def _section_config(name: str, df: pd.DataFrame) -> list[str]:
+    vul = df[df["is_vulnerable"] == True]  # noqa: E712
+    lines = [
+        f"## Config `{name}`",
+        "",
+        f"- rows: **{len(df):,}**",
+        f"- unique CVEs: **{df['cve_list'].explode().nunique():,}**" if len(df) else "- unique CVEs: 0",
+        f"- unique projects: **{df['project'].nunique():,}**",
+        f"- unique commits: **{df['commit_id'].nunique():,}**",
+        f"- vulnerable / non-vulnerable: **{int(df['is_vulnerable'].sum()):,}** / **{int((~df['is_vulnerable'].astype(bool)).sum()):,}**",
+        f"- clean rows: **{int(df['clean'].sum()):,}** ({100*df['clean'].mean():.1f}%)" if len(df) else "",
+        f"- kernel-CNA rows: **{int(df['is_kernel_cna'].sum()):,}**",
+        "",
+        "### label_confidence",
+        _md_table(df["label_confidence"].value_counts(dropna=False).to_dict()),
+        "",
+        "### neg_type",
+        _md_table(df["neg_type"].value_counts(dropna=False).to_dict()),
+        "",
+        "### top projects",
+        _md_table(_top(df["project"], 15).to_dict()),
+        "",
+        "### top CWE (vulnerable rows)",
+        _md_table(dict(_cwe_counts(vul).most_common(20))),
+        "",
+    ]
+    if "language" in df.columns:
+        lines += ["### language", _md_table(_top(df["language"], 20).to_dict()), ""]
+    if len(vul):
+        sizes = vul["n_lines"].dropna()
+        if len(sizes):
+            lines += [
+                "### vulnerable function size (lines)",
+                f"- min {int(sizes.min())}, p25 {sizes.quantile(0.25):.0f}, median {sizes.median():.0f}, "
+                f"p75 {sizes.quantile(0.75):.0f}, max {int(sizes.max())}",
+                "",
+            ]
+    # kernel CNA by year
+    k = df[df["is_kernel_cna"] == True]  # noqa: E712
+    if len(k):
+        years = pd.to_datetime(k["published_date"], errors="coerce", utc=True).dt.year.value_counts().sort_index()
+        lines += ["### kernel-CNA rows by year", _md_table(years.to_dict(), ("year", "rows")), ""]
+    return lines
+
+
+def _compare_secvuleval(df: pd.DataFrame) -> list[str]:
+    if df is None or not len(df):
+        return ["## Comparison with SecVulEval (≤2024)", "", "_cpp dataset empty_", ""]
+    pubs = pd.to_datetime(df["published_date"], errors="coerce", utc=True)
+    sub = df[pubs.dt.year.fillna(9999) <= 2024]
+    vul = sub[sub["is_vulnerable"] == True]  # noqa: E712
+    n_cve = sub["cve_list"].explode().nunique()
+    return [
+        "## Comparison with SecVulEval (CVE published ≤ 2024)",
+        "",
+        "| | SecVulEval | VulSpot `cpp` ≤2024 |",
+        "|---|---|---|",
+        f"| unique CVEs | {SECVUL_CVES:,} | {n_cve:,} |",
+        f"| function rows | {SECVUL_FUNCS:,} | {len(sub):,} |",
+        f"| vulnerable functions | 10,998 | {int(vul.shape[0]):,} |",
+        "",
+        "Numbers will not match exactly: VulSpot keeps confidence-tiered rows (including untouched negatives),",
+        "uses AST-level statement units, and does not apply SecVulEval's original project-name seed.",
+        "A closer apples-to-apples slice is `clean & is_vulnerable & neg_type is null` on `cpp/full`.",
+        "",
+    ]
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default=None)
+    args = ap.parse_args()
+    cfg = load_config(args.config)
+    log = get_logger("06_report", cfg.paths.logs)
+
+    cpp = _load(cfg.paths.out / "cpp" / "full")
+    multi = _load(cfg.paths.out / "multi" / "full")
+    s02 = read_json(cfg.paths.interim / "02_summary.json", {})
+    s04 = read_json(cfg.paths.interim / "04_summary.json", {})
+    s05 = read_json(cfg.paths.interim / "05_summary.json", {})
+
+    lines = [
+        "# VulSpot report",
+        "",
+        "Generated by `06_report.py`. Collection follows SecVulEval §3.1–3.3 with the",
+        "statement-level, confidence-tier, and sink-candidate improvements described in README.md.",
+        "",
+        "## Collection funnel",
+        "",
+        "### NVD / patch refs (stage 2)",
+        _md_table((s02 or {}).get("counts") or {}),
+        "",
+        "Non-GitHub hosts with a `Patch` tag (counted, not fetched):",
+        "",
+        _md_table(dict((s02 or {}).get("top_other_hosts_with_patch_tag") or [])),
+        "",
+        "### Extraction (stage 4)",
+        _md_table((s04 or {}).get("counts") or {}),
+        "",
+        "### Filter / build (stage 5)",
+        "```json",
+        json.dumps((s05 or {}).get("funnel") or {}, indent=2, default=str),
+        "```",
+        "",
+    ]
+    if cpp is not None:
+        lines += _section_config("cpp / full", cpp)
+        lines += _compare_secvuleval(cpp)
+    if multi is not None:
+        lines += _section_config("multi / full", multi)
+
+    # clone stats
+    if cpp is not None and "clone_group_id" in cpp.columns:
+        sizes = cpp.groupby("clone_group_id").size()
+        n_non_singleton = int((sizes > 1).sum())
+        lines += [
+            "## Clone groups (`cpp`)",
+            f"- groups: {sizes.size:,}; non-singleton groups: {n_non_singleton:,}; "
+            f"rows in non-singleton groups: {int(sizes[sizes > 1].sum()):,}",
+            "",
+        ]
+
+    text = "\n".join(lines) + "\n"
+    out = cfg.paths.out / "report.md"
+    out.write_text(text, encoding="utf-8")
+    log.info("wrote %s", out)
+
+
+if __name__ == "__main__":
+    main()

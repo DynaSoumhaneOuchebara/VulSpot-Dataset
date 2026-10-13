@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+data/raw/nvd/
+data/raw/cwe/
+data/raw/github_repos/
+data/interim/
+data/out/
+logs/
+*.tmp
+.DS_Store
+# keep the three SecVulEval fixture commits used by tests
+!data/raw/commits/
+data/raw/commits/**
+!data/raw/commits/torvalds__linux/
+!data/raw/commits/torvalds__linux/04bcef2a83f40c6db24222b27a52892cba39dffb/
+!data/raw/commits/torvalds__linux/05692d7005a364add85c6e25a6c4447ce08f913a/
+!data/raw/commits/torvalds__linux/0926f91083f34d047abc74f1ca4fa6a9c161f7db/
