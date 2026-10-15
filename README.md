@@ -47,7 +47,7 @@ See `jobs/run_pipeline.sh` (nohup) and `jobs/run_pipeline.sbatch` (SLURM). Typic
 source .venv/bin/activate
 python 01_fetch_nvd.py                  # hours without a key; ~30 min with one
 python 02_extract_commit_refs.py
-python 03_fetch_commits.py              # the long one; 5–8 h with a token
+python 03_fetch_commits.py              # long; resumable. Linux file bodies come from data/mirrors/linux.git
 # ping the agent / then:
 python 04_extract_functions.py
 python 05_filter_build.py

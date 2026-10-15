@@ -31,13 +31,19 @@ refs:
 github:
   api_url: https://api.github.com
   raw_url: https://raw.githubusercontent.com
-  # Requests/hour: 60 anonymous, 5000 with token. We pace conservatively.
+  # Requests/hour: 60 anonymous, 5000 with token. Do not lower this; it is the REST ceiling.
   min_interval_s: 0.75
+  # raw.githubusercontent.com is a separate limit. One in-flight request, paced, avoids 429 storms.
+  raw_min_interval_s: 0.4
+  raw_workers: 4                   # parallel only helps local git mirrors; HTTP stays serialized
   max_retries: 8
   max_files_per_commit: 300        # REST returns at most 300 files; larger commits are skipped
   max_file_bytes: 2000000          # skip blobs larger than this (generated code, data)
   fetch_file_contents: true
   drop_merge_commits: true
+  # Bare clones. File bodies are read with `git show` instead of the raw CDN.
+  git_mirrors:
+    torvalds/linux: data/mirrors/linux.git
 
 commit_message:
   # Lines matching any regex (case-insensitive, anchored at line start) are removed

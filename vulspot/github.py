@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
+import subprocess
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .config import ROOT
 from .http import HttpClient
 from .io import atomic_write_bytes, read_json, write_json
 from .refs import repo_key
@@ -35,9 +40,13 @@ class GitHubClient:
         else:
             log.warning("no GITHUB_TOKEN: 60 requests/hour. Set a token.")
         self.http = HttpClient(min_interval_s=float(g["min_interval_s"]), max_retries=int(g["max_retries"]), headers=headers)
-        # raw.githubusercontent.com is not subject to the REST quota; light pacing only
-        self.raw_http = HttpClient(min_interval_s=0.05, max_retries=5)
-        self.pool = ThreadPoolExecutor(max_workers=4)
+        # Serialized: parallel raw GETs are what triggered the 429 storms on torvalds/linux.
+        self.raw_http = HttpClient(min_interval_s=float(g.get("raw_min_interval_s", 0.4)),
+                                   max_retries=int(g["max_retries"]))
+        self._raw_lock = threading.Lock()
+        self.pool = ThreadPoolExecutor(max_workers=int(g.get("raw_workers", 4)))
+        self.mirrors: dict[str, Path] = {}
+        self._mirror_cfg = dict(g.get("git_mirrors") or {})
 
     # ---- repos -----------------------------------------------------------
     def repo_info(self, repo: str) -> dict | None:
@@ -126,14 +135,59 @@ class GitHubClient:
                 self.http.sess.headers["Accept"] = prev
         return r.text if r is not None else None
 
+    def ensure_mirrors(self) -> None:
+        """Clone configured bare mirrors once. Missing or failed clones fall back to raw HTTP."""
+        for repo, rel in self._mirror_cfg.items():
+            dest = Path(rel)
+            if not dest.is_absolute():
+                dest = ROOT / dest
+            if _mirror_ready(dest):
+                log.info("git mirror ready: %s -> %s", repo, dest)
+                self.mirrors[repo] = dest
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.exists() and (dest / "config").is_file():
+                log.info("resuming bare fetch for %s", repo)
+                if _git(["--git-dir", str(dest), "fetch", "origin"], timeout=6 * 3600) and _mirror_ready(dest):
+                    self.mirrors[repo] = dest
+                else:
+                    log.warning("mirror resume failed for %s; file bodies will use raw.githubusercontent.com", repo)
+                continue
+            if dest.exists():
+                log.warning("removing incomplete mirror %s", dest)
+                shutil.rmtree(dest)
+            log.info("cloning bare mirror %s (one-time, a few GB) -> %s", repo, dest)
+            url = f"https://github.com/{repo}.git"
+            if _git(["clone", "--bare", url, str(dest)], timeout=6 * 3600) and _mirror_ready(dest):
+                self.mirrors[repo] = dest
+            else:
+                log.warning("mirror clone failed for %s; file bodies will use raw.githubusercontent.com", repo)
+
     def fetch_raw_file(self, repo: str, ref: str, path: str) -> bytes | None:
-        url = f"{self.raw}/{repo}/{ref}/{path}"
-        r = self.raw_http.get(url, allow_404=True)
-        if r is None:
+        mirror = self.mirrors.get(repo)
+        if mirror is not None:
+            return self._git_show(mirror, ref, path)
+        with self._raw_lock:
+            url = f"{self.raw}/{repo}/{ref}/{path}"
+            r = self.raw_http.get(url, allow_404=True)
+            if r is None or len(r.content) > self.max_file_bytes:
+                return None
+            return r.content
+
+    def _git_show(self, mirror: Path, ref: str, path: str) -> bytes | None:
+        """Exact blob bytes. A missing path is a real miss (do not fall back to the CDN)."""
+        spec = f"{ref}:{path}"
+        try:
+            proc = subprocess.run(
+                ["git", "--git-dir", str(mirror), "cat-file", "blob", spec],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as e:
+            log.warning("git cat-file failed %s: %s", spec, e)
             return None
-        if len(r.content) > self.max_file_bytes:
+        if proc.returncode != 0 or len(proc.stdout) > self.max_file_bytes:
             return None
-        return r.content
+        return proc.stdout
 
     # ---- orchestration ---------------------------------------------------
     def fetch_commit(self, repo: str, sha: str, cve_ids: list[str], code_extensions: set[str]) -> dict:
@@ -213,6 +267,21 @@ def _ext(path: str) -> str:
     if "." not in name:
         return ""
     return "." + name.rsplit(".", 1)[-1]
+
+
+def _mirror_ready(dest: Path) -> bool:
+    return (dest / "HEAD").is_file() and (dest / "objects").is_dir()
+
+
+def _git(args: list[str], timeout: int) -> bool:
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    try:
+        proc = subprocess.run(["git", *args], env=env, check=False, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log.warning("git %s failed: %s", args[0], e)
+        return False
+    return proc.returncode == 0
 
 
 def load_meta(commit_dir: Path) -> dict | None:

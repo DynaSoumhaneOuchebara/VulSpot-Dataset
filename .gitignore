@@ -7,6 +7,7 @@ __pycache__/
 data/raw/nvd/
 data/raw/cwe/
 data/raw/github_repos/
+data/mirrors/
 data/interim/
 data/out/
 logs/

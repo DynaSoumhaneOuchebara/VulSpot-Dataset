@@ -52,6 +52,7 @@ def main() -> None:
                       cfg.paths.root / "data" / "raw" / "github_repos")
 
     if not args.resolution_only:
+        gh.ensure_mirrors()
         todo = []
         for j in jobs:
             # the commit may have been stored under the canonical repo; check both locations
