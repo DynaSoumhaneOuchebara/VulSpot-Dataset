@@ -4,14 +4,25 @@
 Entirely offline. Reads data/raw/commits and data/interim/{cves.jsonl.gz,commit_resolution.jsonl}.
 Writes data/interim/functions.jsonl.gz and data/interim/04_summary.json.
 
+Tree-sitter trees are dropped after each file. The process also re-execs itself after
+--max-commits newly processed commits, or when resident memory passes --max-rss-gb, so
+pages from earlier commits are returned to the OS. Finished commits are checkpointed
+before that restart and are skipped on the next start. Gzip of functions.jsonl runs
+only when every commit has been processed.
+
     python 04_extract_functions.py
     python 04_extract_functions.py --limit 100
     python 04_extract_functions.py --scan-raw          # all ok commits under data/raw/commits
     python 04_extract_functions.py --retry-errors
+    python 04_extract_functions.py --max-commits 0     # never re-exec
 """
 from __future__ import annotations
 
 import argparse
+import ctypes
+import gc
+import logging
+import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -61,6 +72,39 @@ def _jobs_from_raw(commits_dir: Path) -> list[dict]:
     return jobs
 
 
+def _rss_bytes() -> int:
+    try:
+        with open("/proc/self/status", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        return 0
+    return 0
+
+
+def _release_process_memory() -> None:
+    """Collect dropped parse trees and ask glibc to return free pages."""
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
+
+
+def _reexec(log) -> None:
+    log.info("re-exec to release memory; finished commits stay in the checkpoint")
+    for handler in log.handlers:
+        handler.flush()
+    logging.shutdown()
+    argv = [sys.executable, "-u", *sys.argv]
+    try:
+        os.execv(sys.executable, argv)
+    except OSError as e:
+        sys.stderr.write(f"re-exec failed: {e}\n")
+        sys.exit(1)
+
+
 def _done_pair_ids(path: Path) -> set[str]:
     done = set()
     if not path.exists():
@@ -79,6 +123,10 @@ def main() -> None:
     ap.add_argument("--scan-raw", action="store_true")
     ap.add_argument("--retry-errors", action="store_true")
     ap.add_argument("--fresh", action="store_true", help="overwrite functions.jsonl.gz")
+    ap.add_argument("--max-commits", type=int, default=2000,
+                    help="re-exec after this many newly processed commits (0 disables)")
+    ap.add_argument("--max-rss-gb", type=float, default=16,
+                    help="re-exec when resident memory exceeds this many GiB (0 disables)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -119,6 +167,9 @@ def main() -> None:
     raw_out = cfg.paths.interim / "functions.jsonl"
     rec_app = JsonlAppender(recs_path)
     fun_app = JsonlAppender(raw_out)
+    rss_limit = int(args.max_rss_gb * (1024 ** 3)) if args.max_rss_gb and args.max_rss_gb > 0 else 0
+    processed_new = 0
+    restart = False
 
     try:
         for j in tqdm(jobs, desc="extract", unit="commit"):
@@ -146,20 +197,35 @@ def main() -> None:
             except Exception as e:  # noqa: BLE001
                 log.exception("extract failed %s: %s", key, e)
                 stat["exception"] += 1
+                # Checkpoint before any restart so this commit is not parsed again.
                 rec_app.write({"repo": repo, "commit_id": sha, "status": "exception", "error": str(e)})
-                continue
-            rec_app.write(rec)
-            for r in rows:
-                fun_app.write(r)
-            n_rows += len(rows)
-            stat["ok"] += 1
-            stat["rows"] += len(rows)
-            extracted_keys.add(key)
+            else:
+                rec_app.write(rec)
+                for r in rows:
+                    fun_app.write(r)
+                n_rows += len(rows)
+                stat["ok"] += 1
+                stat["rows"] += len(rows)
+                extracted_keys.add(key)
+            processed_new += 1
+            _release_process_memory()
+            rss = _rss_bytes()
+            hit_count = bool(args.max_commits) and processed_new >= args.max_commits
+            hit_rss = bool(rss_limit) and rss >= rss_limit
+            if hit_count or hit_rss:
+                why = "commit budget" if hit_count else f"rss {rss / (1024 ** 3):.1f} GiB"
+                log.info("restarting after %d new commits (%s)", processed_new, why)
+                restart = True
+                break
     finally:
         rec_app.close()
         fun_app.close()
 
-    # gzip the functions file for the next stage
+    if restart:
+        _reexec(log)
+
+    # gzip the functions file for the next stage. Skipped on re-exec; the raw jsonl
+    # is the file the next process appends to.
     if raw_out.exists():
         import gzip
         import shutil

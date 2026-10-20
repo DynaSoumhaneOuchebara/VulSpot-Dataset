@@ -55,7 +55,7 @@ class Function:
     start_byte: int
     end_byte: int
     text: str
-    node: Node = field(repr=False)
+    node: Node | None = field(default=None, repr=False)
     body_node: Node | None = field(default=None, repr=False)
     units: list[Unit] = field(default_factory=list, repr=False)
     qualified_name: str = ""
@@ -63,6 +63,13 @@ class Function:
     @property
     def n_lines(self) -> int:
         return self.end_line - self.start_line + 1
+
+
+def release_functions(funcs) -> None:
+    """Drop syntax nodes so the tree-sitter tree can be freed with the file."""
+    for fn in funcs:
+        fn.node = None
+        fn.body_node = None
 
 
 # ---------------------------------------------------------------------------

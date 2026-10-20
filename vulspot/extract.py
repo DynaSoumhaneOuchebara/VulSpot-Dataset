@@ -13,7 +13,10 @@ from .diffparse import LineDiff, difflib_linediff, linediff_consistent, parse_hu
 from .langs import LanguageResolver, get_spec, grammar_available
 from .sanitize import MessageSanitizer, mentions
 from .sinks import sink_candidates
-from .tsparse import Function, changed_lines_for_fn, changed_statements_for_lines, line_offsets, parse_file
+from .tsparse import (
+    Function, changed_lines_for_fn, changed_statements_for_lines, line_offsets, parse_file,
+    release_functions,
+)
 
 log = logging.getLogger("extract")
 
@@ -134,31 +137,44 @@ class Extractor:
                 ld = difflib_linediff(btxt, atxt)
             frec["line_diff_source"] = ld.source
             # ---- parse
+            # Roots and function nodes keep the tree-sitter trees alive. Always drop them
+            # before the next file; `continue` from the parse-error path runs this too.
+            broot = aroot = None
+            bfuncs = []
+            afuncs = []
             try:
-                broot, bfuncs = parse_file(bsrc, lang, self.max_func_lines)
-                aroot, afuncs = parse_file(asrc, lang, self.max_func_lines)
-            except Exception as e:  # noqa: BLE001
-                rec["n_files_parse_error"] += 1
-                frec["skipped"] = f"parse_error:{type(e).__name__}"
-                continue
-            rec["n_files_processed"] += 1
-            frows = self._process_file(
-                repo, sha, path, lang, frec["is_test"], bsrc, asrc, broot, aroot, bfuncs, afuncs, ld,
-                msg, msg_raw, desc, cve_ids, rec.get("commit_date"), parent_sha,
-            )
-            n_changed = sum(1 for r in frows if r["pair_status"] in ("paired", "renamed") and r["is_vulnerable"] == 1)
-            frec["n_changed_funcs"] = n_changed
-            frec["n_untouched"] = sum(1 for r in frows if r["neg_type"] == "untouched")
-            if n_changed:
-                rec["n_files_with_func_edits"] += 1
-                if frec["is_test"]:
-                    rec["n_changed_funcs_test"] += n_changed
+                try:
+                    broot, bfuncs = parse_file(bsrc, lang, self.max_func_lines)
+                    aroot, afuncs = parse_file(asrc, lang, self.max_func_lines)
+                except Exception as e:  # noqa: BLE001
+                    rec["n_files_parse_error"] += 1
+                    frec["skipped"] = f"parse_error:{type(e).__name__}"
+                    continue
+                rec["n_files_processed"] += 1
+                frows = self._process_file(
+                    repo, sha, path, lang, frec["is_test"], bsrc, asrc, broot, aroot, bfuncs, afuncs, ld,
+                    msg, msg_raw, desc, cve_ids, rec.get("commit_date"), parent_sha,
+                )
+                n_changed = sum(1 for r in frows if r["pair_status"] in ("paired", "renamed") and r["is_vulnerable"] == 1)
+                frec["n_changed_funcs"] = n_changed
+                frec["n_untouched"] = sum(1 for r in frows if r["neg_type"] == "untouched")
+                if n_changed:
+                    rec["n_files_with_func_edits"] += 1
+                    if frec["is_test"]:
+                        rec["n_changed_funcs_test"] += n_changed
+                    else:
+                        rec["n_changed_funcs"] += n_changed
                 else:
-                    rec["n_changed_funcs"] += n_changed
-            else:
-                rec["n_files_no_func_edits"] += 1
-            rec["n_untouched_funcs"] += frec["n_untouched"]
-            rows.extend(frows)
+                    rec["n_files_no_func_edits"] += 1
+                rec["n_untouched_funcs"] += frec["n_untouched"]
+                rows.extend(frows)
+            finally:
+                release_functions(bfuncs)
+                release_functions(afuncs)
+                broot = aroot = None
+                bfuncs = []
+                afuncs = []
+                del bsrc, asrc, btxt, atxt, ld
         # commit-level counts for tiering (non-test code files with in-function edits)
         for r in rows:
             r["commit_n_files"] = rec["n_files"]
