@@ -66,7 +66,7 @@ def main() -> None:
     require_tag = rcfg["require_tag"]
     accept_untagged = bool(rcfg.get("accept_untagged_commit_urls", False))
 
-    mapper = Cwe1003Mapper(cfg.paths.root / "data" / "raw" / "cwe")
+    mapper = Cwe1003Mapper(cfg.paths.raw_nvd.parent / "cwe")
     if not mapper.available and not args.no_cwe_download:
         mapper.download()
 

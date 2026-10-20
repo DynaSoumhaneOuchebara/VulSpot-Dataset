@@ -48,8 +48,10 @@ def main() -> None:
     log.info("%d commit jobs", len(jobs))
 
     code_exts = set(cfg["languages"]["extension_map"].keys())
-    gh = GitHubClient(cfg, env_secret("GITHUB_TOKEN"), cfg.paths.raw_commits,
-                      cfg.paths.root / "data" / "raw" / "github_repos")
+    # Anonymous GitHub is 60 req/h. Job 16246721 ran two days at that cap (~30 commits/h).
+    token = env_secret("GITHUB_TOKEN", required=not args.resolution_only)
+    gh = GitHubClient(cfg, token, cfg.paths.raw_commits,
+                      cfg.paths.raw_commits.parent / "github_repos")
 
     if not args.resolution_only:
         gh.ensure_mirrors()
@@ -97,7 +99,7 @@ def main() -> None:
             "canonical_repo": (meta or {}).get("canonical_repo"),
             "full_sha": (meta or {}).get("full_sha"),
             "status": (meta or {}).get("status", "not_fetched"),
-            "commit_dir": str(gh.commit_dir((meta or {}).get("canonical_repo") or j["repo"], j["sha"]).relative_to(cfg.paths.root)) if meta else None,
+            "commit_dir": str(gh.commit_dir((meta or {}).get("canonical_repo") or j["repo"], j["sha"])) if meta else None,
         })
     n = write_jsonl(cfg.paths.interim / "commit_resolution.jsonl", rows)
     log.info("wrote commit_resolution.jsonl (%d rows): %s", n, dict(Counter(r["status"] for r in rows)))

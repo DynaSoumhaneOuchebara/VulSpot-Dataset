@@ -1,11 +1,12 @@
-# VulSpot pipeline configuration. All paths are relative to the project root.
+# VulSpot pipeline configuration.
+# Dataset files live on scratch. Code and logs stay in the project directory.
 dataset_name: VulSpot
 
 paths:
-  raw_nvd: data/raw/nvd            # one JSON per 120-day window + state file
-  raw_commits: data/raw/commits    # data/raw/commits/<owner>__<repo>/<sha>/
-  interim: data/interim            # stage outputs (jsonl / parquet)
-  out: data/out                    # final datasets
+  raw_nvd: /gpfs/scratch/acad/maiaone/douch/vulspot-data/raw/nvd
+  raw_commits: /gpfs/scratch/acad/maiaone/douch/vulspot-data/raw/commits
+  interim: /gpfs/scratch/acad/maiaone/douch/vulspot-data/interim
+  out: /gpfs/scratch/acad/maiaone/douch/vulspot-data/out
   logs: logs
 
 nvd:
@@ -43,7 +44,7 @@ github:
   drop_merge_commits: true
   # Bare clones. File bodies are read with `git show` instead of the raw CDN.
   git_mirrors:
-    torvalds/linux: data/mirrors/linux.git
+    torvalds/linux: /gpfs/scratch/acad/maiaone/douch/vulspot-data/mirrors/linux.git
 
 commit_message:
   # Lines matching any regex (case-insensitive, anchored at line start) are removed

@@ -11,6 +11,12 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def under_root(value: str) -> Path:
+    """Absolute config paths are used as-is. Relative ones stay under the repo."""
+    path = Path(value)
+    return path if path.is_absolute() else ROOT / path
+
+
 @dataclass
 class Paths:
     root: Path
@@ -40,11 +46,11 @@ class Config(dict):
         p = self["paths"]
         return Paths(
             root=ROOT,
-            raw_nvd=ROOT / p["raw_nvd"],
-            raw_commits=ROOT / p["raw_commits"],
-            interim=ROOT / p["interim"],
-            out=ROOT / p["out"],
-            logs=ROOT / p["logs"],
+            raw_nvd=under_root(p["raw_nvd"]),
+            raw_commits=under_root(p["raw_commits"]),
+            interim=under_root(p["interim"]),
+            out=under_root(p["out"]),
+            logs=under_root(p["logs"]),
         )
 
 

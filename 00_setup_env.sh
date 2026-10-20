@@ -25,6 +25,11 @@ tree_sitter_language_pack.get_parser("python").parse(b"def f():\n  return 0\n")
 print("[setup] environment OK")
 EOF
 
-mkdir -p data/raw/nvd data/raw/commits data/interim data/out logs
+mkdir -p \
+  /gpfs/scratch/acad/maiaone/douch/vulspot-data/raw/nvd \
+  /gpfs/scratch/acad/maiaone/douch/vulspot-data/raw/commits \
+  /gpfs/scratch/acad/maiaone/douch/vulspot-data/interim \
+  /gpfs/scratch/acad/maiaone/douch/vulspot-data/out \
+  logs
 echo "[setup] done. Activate with: source $VENV/bin/activate"
 echo "[setup] export NVD_API_KEY=... GITHUB_TOKEN=... HF_TOKEN=... before running network stages."

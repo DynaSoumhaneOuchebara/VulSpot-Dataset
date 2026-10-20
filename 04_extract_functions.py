@@ -130,7 +130,13 @@ def main() -> None:
                 continue
             cdir = Path(j["commit_dir"])
             if not cdir.is_absolute():
-                cdir = root / cdir
+                # Older resolution files stored project-relative paths (data/raw/commits/...).
+                text = cdir.as_posix()
+                data_root = cfg.paths.raw_commits.parent.parent
+                if text == "data" or text.startswith("data/"):
+                    cdir = data_root / text.removeprefix("data").lstrip("/")
+                else:
+                    cdir = root / cdir
             meta = load_meta(cdir)
             if not meta:
                 stat["missing_meta"] += 1

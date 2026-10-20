@@ -10,18 +10,19 @@
 # Export NVD_API_KEY, GITHUB_TOKEN, HF_TOKEN in the environment before sbatch
 # (or put them in ~/.bashrc). Do not paste tokens into this file.
 #SBATCH --job-name=vulspot
-#SBATCH --output=logs/%j_vulspot_%x.out
+#SBATCH --chdir=/gpfs/projects/acad/maiaone/douch/VulSpot
+#SBATCH --output=/gpfs/projects/acad/maiaone/douch/VulSpot/logs/%j_vulspot_%x.out
 #SBATCH --partition=batch
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=48:00:00
+#SBATCH --time=24:00:00
 #SBATCH --account=maiaone
 
 # Do not `source /etc/profile` here: with `set -e`/`set -u` it aborts before any
 # pipeline output (jobs 16200041, 16200696). Working cluster jobs only `module load`.
-ROOT="/gpfs/home/acad/umons-artint/douch/projects/VulSpot"
+ROOT="/gpfs/projects/acad/maiaone/douch/VulSpot"
 cd "$ROOT"
 mkdir -p logs
 export LANG="${LANG:-C.UTF-8}"
