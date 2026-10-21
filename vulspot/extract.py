@@ -36,6 +36,7 @@ class Extractor:
         self.ctx_max_count = int(ex.get("same_file_callee_defs_max_count", 8))
         self.untouched_per_file = int(ex.get("untouched_per_file_max", 20))
         self.max_file_bytes = int(cfg["github"].get("max_file_bytes", 2_000_000))
+        self.max_line_chars = int(ex.get("max_line_chars", 2000))
         self.cve_desc = cve_desc or {}
         self._grammar_ok: dict[str, bool] = {}
 
@@ -113,6 +114,11 @@ class Extractor:
                 continue
             if bsrc == asrc:
                 frec["skipped"] = "identical_content"
+                continue
+            # Minified bundles are one huge line holding thousands of nested functions;
+            # every function row would copy that line and exhaust memory.
+            if self.max_line_chars and max(_max_line_len(bsrc), _max_line_len(asrc)) > self.max_line_chars:
+                frec["skipped"] = "minified"
                 continue
             lang = self.resolver.language_for(path, asrc, sibling_exts) or lang_guess
             frec["language"] = lang
@@ -358,6 +364,10 @@ def pair_functions(bfuncs: list[Function], afuncs: list[Function]):
         ua = [f for f in ua if id(f) not in used_a]
     pairs.sort(key=lambda t: t[0].start_byte)
     return pairs, ub, ua
+
+
+def _max_line_len(src: bytes) -> int:
+    return max((len(ln) for ln in src.split(b"\n")), default=0)
 
 
 def _ext(path: str) -> str:

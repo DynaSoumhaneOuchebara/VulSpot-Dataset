@@ -97,7 +97,8 @@ def _reexec(log) -> None:
     for handler in log.handlers:
         handler.flush()
     logging.shutdown()
-    argv = [sys.executable, "-u", *sys.argv]
+    # --fresh must not repeat: it would delete the checkpoint on every restart.
+    argv = [sys.executable, "-u", *[a for a in sys.argv if a != "--fresh"]]
     try:
         os.execv(sys.executable, argv)
     except OSError as e:
@@ -148,7 +149,7 @@ def main() -> None:
     log.info("%d ok commits to extract", len(jobs))
 
     if args.fresh:
-        for p in (out_path, recs_path):
+        for p in (out_path, recs_path, cfg.paths.interim / "functions.jsonl"):
             if p.exists():
                 p.unlink()
 

@@ -128,6 +128,7 @@ extraction:
   same_file_callee_defs_max_chars: 4000   # per function; 0 disables
   same_file_callee_defs_max_count: 8
   max_func_lines: 3000                    # skip pathological functions
+  max_line_chars: 2000                    # files with a longer line are minified/generated; skipped
   untouched_per_file_max: 20              # nearest unchanged functions kept as negatives
   # Strip comments before hashing for norm_hash
   identifier_norm: false                  # keep identifiers (PrimeVul-style); set true to alpha-rename
