@@ -153,10 +153,12 @@ balanced:
   # CVEs at the project's pre-2024 average yearly CVE count; an integer caps CVEs/year.
   linux_post_2024_cap_per_year: auto
   other_projects_cap_per_year: null
+  seed: 13                               # which capped kernel CVEs are kept each year (hash-ranked)
 
 splits:
   chrono: {train: 0.8, val: 0.1, test: 0.1}
-  project_holdout_fraction: 0.1          # fraction of projects (by CVE count) held out
+  project_holdout_fraction: 0.1          # target fraction of rows in held-out projects
+  never_holdout_projects: [torvalds/linux]   # project_url suffixes that always stay in train/val
   seed: 13
 
 hf:

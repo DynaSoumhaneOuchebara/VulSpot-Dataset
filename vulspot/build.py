@@ -1,7 +1,9 @@
 """Stage 5 helpers: join CVE metadata, confidence tiers, later-fixed, kernel-CNA, balancing."""
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
@@ -44,13 +46,48 @@ def load_cves(path) -> dict[str, dict]:
     return {r["cve_id"]: r for r in iter_jsonl(path)}
 
 
-def load_multi_commit_cves(jobs_path) -> set[str]:
+# Linux stable backports cite the mainline fix ("commit <sha> upstream." / "[ Upstream commit <sha> ]").
+_UPSTREAM_REF = re.compile(
+    r"(?im)^\s*(?:\[\s*)?(?:upstream commit [0-9a-f]{7,40}|commit [0-9a-f]{7,40} upstream)\b")
+
+
+def _commit_key(r: dict) -> tuple[str, str]:
+    return ((r.get("canonical_repo") or r["repo"]).lower(), (r.get("full_sha") or r["sha"]).lower())
+
+
+def redundant_backports(resolution_path, extract_path) -> set[tuple[str, str]]:
+    """(repo, sha) of backport commits whose CVEs all also reference a non-backport commit.
+
+    NVD lists a kernel fix together with every stable backport of it. Those are one fix, not a
+    multi-commit CVE. A backport is kept when it is the only commit we have for one of its CVEs.
+    """
     from .io import iter_jsonl
-    counts = Counter()
-    for j in iter_jsonl(jobs_path):
-        for cid in j.get("cve_ids") or []:
-            counts[cid] += 1
-    return {c for c, n in counts.items() if n > 1}
+    backport = set()
+    for r in iter_jsonl(extract_path):
+        if r.get("repo") and r.get("commit_id") and _UPSTREAM_REF.search(r.get("commit_message_raw") or ""):
+            backport.add((r["repo"].lower(), r["commit_id"].lower()))
+    cves_of = defaultdict(set)
+    has_main = set()
+    for r in iter_jsonl(resolution_path):
+        key = _commit_key(r)
+        for cid in r.get("cve_ids") or []:
+            cves_of[key].add(cid)
+            if key not in backport:
+                has_main.add(cid)
+    return {k for k in backport if cves_of.get(k) and cves_of[k] <= has_main}
+
+
+def load_multi_commit_cves(resolution_path, skip_commits: set[tuple[str, str]]) -> set[str]:
+    """CVEs referencing more than one distinct commit, after removing redundant backports."""
+    from .io import iter_jsonl
+    commits = defaultdict(set)
+    for r in iter_jsonl(resolution_path):
+        key = _commit_key(r)
+        if key in skip_commits:
+            continue
+        for cid in r.get("cve_ids") or []:
+            commits[cid].add(key)
+    return {c for c, s in commits.items() if len(s) > 1}
 
 
 def attach_cve_meta(df: pd.DataFrame, cves: dict[str, dict]) -> pd.DataFrame:
@@ -98,14 +135,6 @@ def attach_cve_meta(df: pd.DataFrame, cves: dict[str, dict]) -> pd.DataFrame:
     df["cvss_severity"] = sevs
     df["cvss_vector"] = vectors
     return df
-
-
-def drop_multi_commit(df: pd.DataFrame, multi: set[str]) -> tuple[pd.DataFrame, int]:
-    if not multi:
-        return df, 0
-    mask = df["cve_list"].map(lambda ids: bool(set(ids) & multi) if isinstance(ids, list) else False)
-    n = int(mask.sum())
-    return df.loc[~mask].copy(), n
 
 
 def assign_confidence(df: pd.DataFrame, keep_unmentioned: bool) -> tuple[pd.DataFrame, dict]:
@@ -241,7 +270,7 @@ def balanced_mask(df: pd.DataFrame, cfg: dict) -> pd.Series:
     pubs = df["published_date"].map(_parse_dt)
     pre = linux & pubs.map(lambda d: d is not None and d < start)
     if cap == "auto":
-        pre_cves = {c for ids, m in zip(df.loc[pre, "cve_list"], pre) if m for c in (ids or [])}
+        pre_cves = {c for ids in df.loc[pre, "cve_list"] if ids is not None for c in ids}
         years = set()
         for d, m in zip(pubs, pre):
             if m and d is not None:
@@ -250,34 +279,24 @@ def balanced_mask(df: pd.DataFrame, cfg: dict) -> pd.Series:
         cap_n = max(int(round(len(pre_cves) / n_years)), 1)
     else:
         cap_n = int(cap)
-    # per calendar year after start: keep the earliest cap_n unique CVEs
+    # Per calendar year after start: keep cap_n CVEs spread over the whole year. Taking the earliest
+    # ones would empty the end of every year, i.e. the chronological val/test splits.
+    # Ranking by a seeded hash of the CVE id keeps the choice identical across configs (cpp / multi).
+    seed = str(cfg.get("seed", 13))
     post = k & pubs.map(lambda d: d is not None and d >= start)
-    by_year = defaultdict(list)
-    seen = set()
+    by_year = defaultdict(set)
+    rows = []
     for i, d, ids in zip(df.index[post], pubs[post], df.loc[post, "cve_list"]):
-        cid = (ids or ["?"])[0]
-        if (d.year, cid) in seen:
-            by_year[d.year].append((d, cid, i))
-            continue
-        seen.add((d.year, cid))
-        by_year[d.year].append((d, cid, i))
-    drop_idx = set()
-    for year, items in by_year.items():
-        # unique CVEs in date order
-        ordered = []
-        got = set()
-        for d, cid, i in sorted(items, key=lambda t: (t[0], t[1])):
-            if cid in got:
-                continue
-            got.add(cid)
-            ordered.append(cid)
-        drop_cves = set(ordered[cap_n:])
-        if not drop_cves:
-            continue
-        for d, cid, i in items:
-            if cid in drop_cves:
-                drop_idx.add(i)
-    keep.loc[list(drop_idx)] = False
+        ids = list(ids) if ids is not None else []
+        cid = ids[0] if ids else "?"
+        by_year[d.year].add(cid)
+        rows.append((i, d.year, cid))
+    kept = {}
+    for year, cids in by_year.items():
+        ranked = sorted(cids, key=lambda c: hashlib.sha1(f"{seed}:{c}".encode()).hexdigest())
+        kept[year] = set(ranked[:cap_n])
+    drop_idx = [i for i, year, cid in rows if cid not in kept[year]]
+    keep.loc[drop_idx] = False
     other_cap = cfg.get("other_projects_cap_per_year")
     if other_cap:
         # optional global per-project yearly cap

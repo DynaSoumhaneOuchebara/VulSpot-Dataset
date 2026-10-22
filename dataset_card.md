@@ -77,8 +77,16 @@ Two localization layers:
 
 ## Splits
 
-- `splits/chrono.json` — 80/10/10 by CVE `published_date`, then clone-group aware (`clone_group_id`): a near-duplicate group is moved entirely to the earliest split it appears in.
-- `splits/project_holdout.json` — a random ~10% of projects (by rows; Linux is never the sole holdout) as test; the rest split chronologically into train/val.
+- `splits/chrono.json` — 80/10/10 by CVE `published_date`, then clone-group aware (`clone_group_id`): a row whose near-duplicate group already appears in an earlier split (train < val < test) is excluded, so train never contains rows newer than test.
+- `splits/project_holdout.json` — a random ~10% of rows, taken as whole projects, as test (Linux always stays in train/val); the rest split chronologically into train/val. Same clone-group exclusion.
+
+Both files also contain evaluation subsets of `test`:
+
+- `test_high` — `clean` test rows, without vulnerable rows whose `label_confidence` is not `high` (all negatives kept)
+- `test_paired_high` — high-confidence vulnerable rows whose fixed version is also in test, plus those fixed versions (PrimeVul-style paired evaluation)
+- `test_no_linux` — test without `torvalds/linux` rows
+
+In `balanced`, the post-2024 kernel CVEs kept each year are a seeded sample spread over the year, so chronological val/test still contain some Linux.
 
 Exact duplicates use `hash` (md5 of per-line-stripped body). `norm_hash` drops comments/whitespace. `clone_group_id` is MinHash-LSH (5-shingles, Jaccard ≥ 0.8).
 

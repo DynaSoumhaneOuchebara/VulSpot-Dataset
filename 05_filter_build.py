@@ -3,10 +3,12 @@
 
     python 05_filter_build.py
     python 05_filter_build.py --config config.yaml
+    python 05_filter_build.py --splits-only     # balanced variants + splits from existing out/*/full
 """
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import sys
 from collections import Counter
@@ -25,7 +27,6 @@ from vulspot.build import (
     balanced_mask,
     clean_flag,
     cpp_mask,
-    drop_multi_commit,
     drop_no_func_edits,
     exact_dedup,
     finalize_columns,
@@ -33,6 +34,7 @@ from vulspot.build import (
     later_fixed,
     load_cves,
     load_multi_commit_cves,
+    redundant_backports,
 )
 from vulspot.config import load_config
 from vulspot.dedup import CloneDetector
@@ -42,15 +44,34 @@ from vulspot.log import get_logger
 from vulspot.splits import chrono_split, project_holdout_split
 
 
-def _load_functions(interim: Path, log) -> pd.DataFrame:
+def _load_functions(interim: Path, log, skip_commits: set, multi: set, funnel: dict) -> pd.DataFrame:
+    """Stream rows, dropping redundant-backport and multi-commit-CVE rows before they reach memory."""
     gz = interim / "functions.jsonl.gz"
     raw = interim / "functions.jsonl"
     candidates = [p for p in (raw, gz) if p.exists()]
     if not candidates:
         raise SystemExit(f"missing {gz} (run 04_extract_functions.py)")
     path = max(candidates, key=lambda p: p.stat().st_mtime)
-    rows = list(tqdm(iter_jsonl(path), desc="load functions"))
-    log.info("loaded %d function rows from %s", len(rows), path)
+    rows = []
+    n = n_backport = n_multi = 0
+    for r in tqdm(iter_jsonl(path), desc="load functions"):
+        n += 1
+        if ((r.get("repo") or "").lower(), (r.get("commit_id") or "").lower()) in skip_commits:
+            n_backport += 1
+            continue
+        ids = r.get("cve_list")
+        if isinstance(ids, str):
+            ids = json.loads(ids or "[]")
+        if multi and set(ids or []) & multi:
+            n_multi += 1
+            continue
+        rows.append(r)
+    funnel["extracted_rows"] = n
+    funnel["dropped_redundant_backport_rows"] = n_backport
+    funnel["dropped_multi_commit_cve_rows"] = n_multi
+    funnel["after_multi_commit"] = len(rows)
+    log.info("read %d rows from %s: dropped %d backport rows, %d multi-commit CVE rows; kept %d",
+             n, path, n_backport, n_multi, len(rows))
     return pd.DataFrame(rows)
 
 
@@ -68,26 +89,72 @@ def _clone_groups(df: pd.DataFrame, cfg: dict, log) -> pd.Series:
     return df["hash"].map(gmap)
 
 
-def _write_frame(df: pd.DataFrame, out_dir: Path, name: str, log) -> None:
+def _write_frame(df: pd.DataFrame, out_dir: Path, name: str, log, chunk_rows: int = 20000) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     pq = out_dir / f"{name}.parquet"
     js = out_dir / f"{name}.jsonl.gz"
     df.to_parquet(pq, index=False)
-    df.to_json(js, orient="records", lines=True, force_ascii=False, compression="gzip")
+    # chunked: a single to_json call materialises the whole file as one string
+    with gzip.open(js, "wt", encoding="utf-8") as f:
+        for start in range(0, len(df), chunk_rows):
+            text = df.iloc[start:start + chunk_rows].to_json(orient="records", lines=True, force_ascii=False)
+            f.write(text if text.endswith("\n") else text + "\n")
     log.info("wrote %s (%d rows, %d cols)", pq, len(df), len(df.columns))
 
 
+SPLIT_COLUMNS = ["idx", "commit_id", "published_date", "project_url", "clone_group_id", "is_vulnerable",
+                 "label_confidence", "clean", "fixed_func_idx"]
+
+
 def _write_splits(df: pd.DataFrame, out_dir: Path, cfg: dict, log) -> dict:
-    frac = cfg["splits"]["chrono"]
+    df = df[[c for c in SPLIT_COLUMNS if c in df.columns]]
+    scfg = cfg["splits"]
+    frac = scfg["chrono"]
     chrono = chrono_split(df, (frac["train"], frac["val"], frac["test"]))
-    hold = project_holdout_split(df, holdout_fraction=float(cfg["splits"]["project_holdout_fraction"]),
-                                 seed=int(cfg["splits"]["seed"]))
+    hold = project_holdout_split(df, holdout_fraction=float(scfg["project_holdout_fraction"]),
+                                 seed=int(scfg["seed"]),
+                                 never_holdout=scfg.get("never_holdout_projects", ["torvalds/linux"]))
     split_dir = out_dir / "splits"
     split_dir.mkdir(parents=True, exist_ok=True)
     write_json(split_dir / "chrono.json", chrono, indent=2)
     write_json(split_dir / "project_holdout.json", hold, indent=2)
-    log.info("chrono sizes %s; holdout sizes %s", chrono["meta"]["sizes"], hold["meta"]["sizes"])
+    log.info("%s: chrono sizes %s; holdout sizes %s", out_dir, chrono["meta"]["sizes"], hold["meta"]["sizes"])
     return {"chrono": chrono["meta"], "project_holdout": hold["meta"]}
+
+
+def _balanced_cfg(cfg: dict) -> dict:
+    bcfg = dict(cfg["balanced"])
+    bcfg["kernel_start"] = cfg["kernel_cna"]["start_date"]
+    return bcfg
+
+
+def _rebuild_splits(cfg: dict, log) -> None:
+    """Rebuild balanced variants and all split files from the existing out/{cpp,multi}/full/data.parquet."""
+    bcfg = _balanced_cfg(cfg)
+    summary_path = cfg.paths.out / "05_summary.json"
+    stats = json.loads(summary_path.read_text()) if summary_path.exists() else {}
+    stats.setdefault("funnel", {})
+    stats["splits"] = {}
+    for name in ("cpp", "multi"):
+        d = cfg.paths.out / name
+        full_pq = d / "full" / "data.parquet"
+        if not full_pq.exists():
+            raise SystemExit(f"missing {full_pq} (run 05_filter_build.py without --splits-only first)")
+        full = pd.read_parquet(full_pq)
+        full["cve_list"] = full["cve_list"].map(lambda x: list(x) if x is not None else [])
+        log.info("loaded %s (%d rows)", full_pq, len(full))
+        bal = balanced_mask(full, bcfg)
+        if name == "multi":
+            stats["funnel"]["balanced_kept"] = int(bal.sum())
+            stats["funnel"]["balanced_dropped"] = int((~bal).sum())
+        stats["splits"][f"{name}_full"] = _write_splits(full, d / "full", cfg, log)
+        balanced = full.loc[bal]
+        del full
+        _write_frame(balanced, d / "balanced", "data", log)
+        stats["splits"][f"{name}_balanced"] = _write_splits(balanced, d / "balanced", cfg, log)
+        del balanced
+    write_json(cfg.paths.interim / "05_summary.json", stats, indent=2)
+    write_json(summary_path, stats, indent=2)
 
 
 def _funnel_step(funnel: dict, name: str, n: int) -> None:
@@ -97,26 +164,32 @@ def _funnel_step(funnel: dict, name: str, n: int) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=None)
+    ap.add_argument("--splits-only", action="store_true",
+                    help="reuse out/*/full/data.parquet; rebuild balanced variants and split files only")
     args = ap.parse_args()
     cfg = load_config(args.config)
     log = get_logger("05_filter_build", cfg.paths.logs)
+    if args.splits_only:
+        _rebuild_splits(cfg, log)
+        return
     resolver = LanguageResolver(cfg)
     funnel = {}
 
-    df = _load_functions(cfg.paths.interim, log)
-    _funnel_step(funnel, "extracted_rows", len(df))
+    res_path = cfg.paths.interim / "commit_resolution.jsonl"
+    ext_path = cfg.paths.interim / "commit_extract.jsonl"
+    skip_commits = redundant_backports(res_path, ext_path)
+    multi = set()
+    if cfg["filters"].get("drop_multi_commit_cves", True):
+        multi = load_multi_commit_cves(res_path, skip_commits)
+    funnel["redundant_backport_commits"] = len(skip_commits)
+    funnel["multi_commit_cves"] = len(multi)
+    log.info("%d redundant backport commits; %d multi-commit CVEs", len(skip_commits), len(multi))
+    df = _load_functions(cfg.paths.interim, log, skip_commits, multi, funnel)
 
     cves_path = cfg.paths.interim / "cves.jsonl.gz"
     cves = load_cves(cves_path) if cves_path.exists() else {}
     df = attach_cve_meta(df, cves)
-
-    jobs_path = cfg.paths.interim / "commit_jobs.jsonl"
-    if cfg["filters"].get("drop_multi_commit_cves", True) and jobs_path.exists():
-        multi = load_multi_commit_cves(jobs_path)
-        df, n = drop_multi_commit(df, multi)
-        funnel["dropped_multi_commit_cve_rows"] = n
-        log.info("dropped %d rows from multi-commit CVEs (%d such CVEs)", n, len(multi))
-    _funnel_step(funnel, "after_multi_commit", len(df))
+    del cves
 
     df, n = drop_no_func_edits(df)
     funnel["dropped_no_func_edits"] = n
@@ -126,14 +199,17 @@ def main() -> None:
     funnel["confidence"] = conf_stats
     _funnel_step(funnel, "after_confidence", len(df))
 
+    # Before dedup: the later CVE's vulnerable copy often has the same body as this fixed copy,
+    # and dedup would remove it before it could be matched.
+    df = later_fixed(df)
+
     df, dedup_stats = exact_dedup(df)
     funnel["exact_dedup"] = dedup_stats
     _funnel_step(funnel, "after_exact_dedup", len(df))
-
-    df["clone_group_id"] = _clone_groups(df, cfg, log)
-    df = later_fixed(df)
     n_later = int((df["neg_type"] == "patched_later_vulnerable").sum())
     funnel["patched_later_vulnerable"] = n_later
+
+    df["clone_group_id"] = _clone_groups(df, cfg, log)
 
     kcfg = cfg["kernel_cna"]
     df = kernel_cna_flag(df, kcfg["source_identifiers"], kcfg["start_date"])
@@ -143,8 +219,7 @@ def main() -> None:
     df["clean"] = clean_flag(df)
     df = finalize_columns(df)
 
-    bcfg = dict(cfg["balanced"])
-    bcfg["kernel_start"] = kcfg["start_date"]
+    bcfg = _balanced_cfg(cfg)
     bal = balanced_mask(df, bcfg)
     funnel["balanced_kept"] = int(bal.sum())
     funnel["balanced_dropped"] = int((~bal).sum())
