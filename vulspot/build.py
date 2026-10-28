@@ -91,11 +91,11 @@ def load_multi_commit_cves(resolution_path, skip_commits: set[tuple[str, str]]) 
 
 
 def attach_cve_meta(df: pd.DataFrame, cves: dict[str, dict]) -> pd.DataFrame:
-    descriptions, cwes, cwes1003, published, cnas, cvss = [], [], [], [], [], []
+    descriptions, cwes, published, cnas, cvss = [], [], [], [], []
     scores, sevs, vectors = [], [], []
     for raw in df["cve_list"]:
         ids = _parse_json(raw, []) or []
-        descs, cw, cw3, pubs, sources = [], [], [], [], []
+        descs, cw, pubs, sources = [], [], [], []
         cv = None
         for cid in ids:
             rec = cves.get(cid) or {}
@@ -104,9 +104,6 @@ def attach_cve_meta(df: pd.DataFrame, cves: dict[str, dict]) -> pd.DataFrame:
             for x in rec.get("cwe_list") or []:
                 if x not in cw:
                     cw.append(x)
-            for x in rec.get("cwe_1003_list") or []:
-                if x not in cw3:
-                    cw3.append(x)
             if rec.get("published_date"):
                 pubs.append(rec["published_date"])
             src = rec.get("source_identifier")
@@ -116,7 +113,6 @@ def attach_cve_meta(df: pd.DataFrame, cves: dict[str, dict]) -> pd.DataFrame:
                 cv = rec.get("cvss")
         descriptions.append(descs)
         cwes.append(cw)
-        cwes1003.append(cw3)
         published.append(min(pubs) if pubs else None)
         cnas.append(sources[0] if sources else None)
         cvss.append(cv)
@@ -126,7 +122,6 @@ def attach_cve_meta(df: pd.DataFrame, cves: dict[str, dict]) -> pd.DataFrame:
     df = df.copy()
     df["cve_list"] = [_parse_json(x, []) or [] for x in df["cve_list"]]
     df["cwe_list"] = cwes
-    df["cwe_1003_list"] = cwes1003
     df["cve_descriptions"] = descriptions
     df["published_date"] = published
     df["cna"] = cnas

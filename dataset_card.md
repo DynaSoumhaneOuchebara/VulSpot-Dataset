@@ -70,7 +70,7 @@ Two localization layers:
 
 `cwe_1003_list` maps those CWEs onto any of the 130 members of the CWE-1003 view. A member stays as itself, including the 93 that sit under the 37 top-level entries. A CWE outside the view is walked up to the nearest view member and kept as that member. A CWE with no such ancestor is dropped. The list keeps first-seen order and drops duplicates.
 
-`cwe_1003_high_list` is the previous `cwe_1003_list`. It uses only the 37 top-level entries. A member among the 93 is replaced by its parent in the view. A CWE outside the view is walked up to the nearest view member and then to that member's top-level parent.
+`cwe_1003_high_list` uses only the 37 top-level entries. A member among the 93 is replaced by its parent in the view. A CWE outside the view is walked up to the nearest view member and then to that member's top-level parent.
 
 `cwe_1400_list` has one entry per CWE in `cwe_list`, in the same order: the CWE-1400 category of that CWE (`"CWE-1399"`), or null when that CWE is not in the view. An empty `cwe_list` gives an empty list.
 

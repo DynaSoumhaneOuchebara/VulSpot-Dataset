@@ -20,7 +20,7 @@ export HF_TOKEN=...         # required for stage 7
 | script | stage | network? | output |
 |---|---|---|---|
 | `01_fetch_nvd.py` | 1 NVD dump | yes | `data/raw/nvd/` |
-| `02_extract_commit_refs.py` | 1b patch URLs + CWE-1003 | CWE CSVs once | `data/interim/cves.jsonl.gz`, `commit_jobs.jsonl` |
+| `02_extract_commit_refs.py` | 1b patch URLs + CWE views | CWE data once | `data/interim/cves.jsonl.gz`, `commit_jobs.jsonl` |
 | `03_fetch_commits.py` | 2 GitHub artifacts | yes | `data/raw/commits/<owner>__<repo>/<sha>/` |
 | `04_extract_functions.py` | 3 functions + diffs | no | `data/interim/functions.jsonl.gz` |
 | `05_filter_build.py` | 4–5 filter, dedup, splits | no | `data/out/{cpp,multi}/{full,balanced,paired}/` |

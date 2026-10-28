@@ -7,7 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from vulspot.build import OUTPUT_COLUMNS
 from vulspot.cwe import (
+    Cwe1003Mapper,
     map_category_699_list,
     map_cwe_list,
     map_cwe_members,
@@ -18,6 +20,7 @@ from vulspot.cwe import (
     rollup_to_root,
     view_levels_from_xml,
 )
+from vulspot.config import load_config
 from vulspot.cwe_labels import cwe_1400_aligned, fit_scheme, parse_cwe_ids, top15_labels
 
 CATS = {"476": "1399", "416": "1399", "20": "1406", "122": "1399", "7": "1405"}
@@ -139,6 +142,54 @@ def test_699_uses_membership_then_walks_up_the_primary_chain():
     assert map_category_699_list(["CWE-798", "CWE-787", "CWE-798"], **kw) == [
         "CWE-255", "CWE-320", "CWE-1218",
     ]
+
+
+def test_output_columns_are_the_current_cwe_schema():
+    for name in ("cwe_1000_list", "cwe_699_list", "cwe_1003_list", "cwe_1003_high_list", "cwe_1400_list"):
+        assert name in OUTPUT_COLUMNS
+    assert "top15_cwe_1400" not in OUTPUT_COLUMNS
+
+
+def test_cached_views_match_the_dataset_columns():
+    """The on-disk CWE cache is the one stage 2 and stage 5 label with."""
+    cfg = load_config(ROOT / "config.yaml")
+    mapper = Cwe1003Mapper(cfg.paths.raw_nvd.parent / "cwe")
+    if not mapper.available or not mapper.levels_ready():
+        return
+    mapper.check_views()
+    got = mapper.view_lists(["CWE-122", "CWE-476"])
+    assert got == {
+        "cwe_1000_list": ["CWE-664", "CWE-710"],
+        "cwe_699_list": ["CWE-1218", "CWE-465"],
+        "cwe_1003_list": ["CWE-787", "CWE-476"],
+        "cwe_1003_high_list": ["CWE-119", "CWE-754"],
+    }
+
+
+def test_stage5_writes_view_columns_from_cwe_list():
+    import importlib.util
+
+    import pandas as pd
+
+    cfg = load_config(ROOT / "config.yaml")
+    cwe_dir = cfg.paths.raw_nvd.parent / "cwe"
+    mapper = Cwe1003Mapper(cwe_dir)
+    if not mapper.available or not mapper.levels_ready():
+        return
+    from vulspot.cwe_labels import load_cwe1400
+
+    spec = importlib.util.spec_from_file_location("stage5", ROOT / "05_filter_build.py")
+    stage5 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stage5)
+    raw = ["CWE-122", "CWE-476"]
+    row = {name: None for name in OUTPUT_COLUMNS}
+    row["cwe_list"] = raw
+    out = stage5._attach_cwe_labels(pd.DataFrame([row]), load_cwe1400(cwe_dir), mapper)
+    assert list(out.columns) == OUTPUT_COLUMNS
+    assert "top15_cwe_1400" not in out.columns
+    for name, values in mapper.view_lists(raw).items():
+        assert list(out.iloc[0][name]) == values
+    assert list(out.iloc[0]["cwe_1400_list"]) == cwe_1400_aligned(parse_cwe_ids(raw), load_cwe1400(cwe_dir))
 
 
 def test_view_levels_parse_members_parents_and_categories():

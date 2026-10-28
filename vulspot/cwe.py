@@ -32,6 +32,11 @@ TOP_LEVEL_1000 = 10
 TOP_LEVEL_699 = 40
 TOP_LEVEL_1003 = 37
 VIEW_1003_MEMBERS = 130
+VIEW_COLUMNS = ("cwe_1000_list", "cwe_699_list", "cwe_1003_list", "cwe_1003_high_list")
+PILLARS_1000 = {
+    "CWE-284", "CWE-435", "CWE-664", "CWE-682", "CWE-691",
+    "CWE-693", "CWE-697", "CWE-703", "CWE-707", "CWE-710",
+}
 
 _CWE_ID = re.compile(r"CWE-(\d+)")
 _CHILDOF = re.compile(r"NATURE:ChildOf:CWE ID:(\d+)")
@@ -394,7 +399,7 @@ class Cwe1003Mapper:
             roots, view_parent = parse_1003_tree(xml)
             levels = view_levels_from_xml(xml)
         except Exception as e:  # noqa: BLE001
-            log.warning("could not download CWE data (%s); cwe_1003_list will be null", e)
+            log.warning("could not download CWE data (%s); CWE view columns will be null", e)
             return False
         self.members, self.parents, self.available = members, parents, True
         self.roots, self.view_parent = set(roots), view_parent
@@ -506,3 +511,61 @@ class Cwe1003Mapper:
         if member in self.roots:
             return member
         return None
+
+    def view_lists(self, cwes: list[str] | None) -> dict[str, list[str] | None]:
+        """The four dataset view columns for one raw CWE list.
+
+        `cwe_1000_list` is the CWE-1000 pillars, `cwe_699_list` the CWE-699
+        categories, `cwe_1003_list` any of the 130 CWE-1003 members, and
+        `cwe_1003_high_list` the 37 top-level entries of that view.
+        """
+        if not self.available:
+            return {name: None for name in VIEW_COLUMNS}
+        ids = list(cwes or [])
+        return {
+            "cwe_1000_list": self.map_1000_list(ids),
+            "cwe_699_list": self.map_699_list(ids),
+            "cwe_1003_list": self.map_member_list(ids),
+            "cwe_1003_high_list": self.map_list(ids),
+        }
+
+    def check_views(self) -> None:
+        """Fail if the cached graphs are not the views the dataset columns use."""
+        if len(self.roots) != TOP_LEVEL_1003 or len(self.members) != VIEW_1003_MEMBERS:
+            raise RuntimeError(
+                f"CWE-1003 has {len(self.roots)} top-level entries and {len(self.members)} members"
+            )
+        if set(self.pillars) != PILLARS_1000 or len(self.categories_699) != TOP_LEVEL_699:
+            raise RuntimeError(
+                f"CWE-1000 pillars {self.pillars}; CWE-699 has {len(self.categories_699)} categories"
+            )
+        if len(self.primary_1000) < 900 or len(self.member_699) < 350:
+            raise RuntimeError(
+                f"CWE graph looks short: {len(self.primary_1000)} primary parents, "
+                f"{len(self.member_699)} CWE-699 memberships"
+            )
+        expect = {
+            ("CWE-787",): (["CWE-664"], ["CWE-1218"], ["CWE-787"], ["CWE-119"]),
+            ("CWE-122",): (["CWE-664"], ["CWE-1218"], ["CWE-787"], ["CWE-119"]),
+            ("CWE-119",): (["CWE-664"], [], ["CWE-119"], ["CWE-119"]),
+            ("CWE-476",): (["CWE-710"], ["CWE-465"], ["CWE-476"], ["CWE-754"]),
+            ("CWE-416",): (["CWE-664"], ["CWE-465"], ["CWE-416"], ["CWE-672"]),
+            ("CWE-798",): (["CWE-284"], ["CWE-255", "CWE-320"], ["CWE-798"], ["CWE-287"]),
+            ("CWE-20",): (["CWE-707"], [], ["CWE-20"], ["CWE-20"]),
+            ("CWE-125", "CWE-787"): (["CWE-664"], ["CWE-1218"], ["CWE-125", "CWE-787"], ["CWE-119"]),
+        }
+        for ids, (pillars, cats, members, high) in expect.items():
+            got = self.view_lists(list(ids))
+            mapped = (
+                got["cwe_1000_list"], got["cwe_699_list"],
+                got["cwe_1003_list"], got["cwe_1003_high_list"],
+            )
+            if mapped != (pillars, cats, members, high):
+                raise RuntimeError(f"{ids}: mapped to {mapped}, expected {(pillars, cats, members, high)}")
+            rolled = []
+            for member in got["cwe_1003_list"] or []:
+                parent = self.rollup_member(member)
+                if parent and parent not in rolled:
+                    rolled.append(parent)
+            if rolled != high:
+                raise RuntimeError(f"{ids}: cwe_1003_high_list {high} is not the rollup of {got['cwe_1003_list']}")

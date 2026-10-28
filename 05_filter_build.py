@@ -42,7 +42,7 @@ from vulspot.dedup import CloneDetector
 from vulspot.io import iter_jsonl, write_json
 from vulspot.langs import LanguageResolver
 from vulspot.log import get_logger
-from vulspot.cwe import Cwe1003Mapper
+from vulspot.cwe import VIEW_COLUMNS, Cwe1003Mapper
 from vulspot.cwe_labels import cwe_1400_aligned, load_cwe1400, parse_cwe_ids
 from vulspot.splits import chrono_split, project_holdout_split
 
@@ -126,14 +126,13 @@ def _write_splits(df: pd.DataFrame, out_dir: Path, cfg: dict, log) -> dict:
 
 
 def _attach_cwe_labels(df: pd.DataFrame, categories: dict[str, str], mapper: Cwe1003Mapper) -> pd.DataFrame:
-    """Map every row onto the CWE-1000, CWE-699, and CWE-1003 views."""
+    """Map every row's cwe_list onto the CWE-1000, CWE-699, CWE-1003, and CWE-1400 views."""
     parsed = [parse_cwe_ids(x) for x in df["cwe_list"]]
     lists = [list(x) if x is not None else [] for x in df["cwe_list"]]
+    views = [mapper.view_lists(v) for v in lists]
     out = df.copy()
-    out["cwe_1000_list"] = [mapper.map_1000_list(v) for v in lists]
-    out["cwe_699_list"] = [mapper.map_699_list(v) for v in lists]
-    out["cwe_1003_list"] = [mapper.map_member_list(v) for v in lists]
-    out["cwe_1003_high_list"] = [mapper.map_list(v) for v in lists]
+    for name in VIEW_COLUMNS:
+        out[name] = [row[name] for row in views]
     out["cwe_1400_list"] = [cwe_1400_aligned(ids, categories) for ids in parsed]
     return out[OUTPUT_COLUMNS]
 
@@ -270,14 +269,10 @@ def main() -> None:
     categories = load_cwe1400(cwe_dir)
     mapper = Cwe1003Mapper(cwe_dir)
     mapper.ensure_levels()
-    if len(mapper.roots) != 37 or len(mapper.members) != 130:
-        raise SystemExit(
-            f"CWE-1003 has {len(mapper.roots)} top-level entries and {len(mapper.members)} members"
-        )
-    if len(mapper.pillars) != 10 or len(mapper.categories_699) != 40:
-        raise SystemExit(
-            f"CWE-1000 has {len(mapper.pillars)} pillars; CWE-699 has {len(mapper.categories_699)} categories"
-        )
+    try:
+        mapper.check_views()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
     cpp = _attach_cwe_labels(cpp, categories, mapper)
     multi = _attach_cwe_labels(multi, categories, mapper)
 

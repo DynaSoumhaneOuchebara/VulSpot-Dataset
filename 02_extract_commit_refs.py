@@ -3,12 +3,14 @@
 
 Outputs (data/interim/):
   cves.jsonl.gz        one record per non-rejected CVE with description, dates, CNA,
-                       CVSS, CWE lists (raw + CWE-1003 mapping) and parsed patch refs
+                       CVSS, the raw CWE list, the four view columns
+                       (cwe_1000_list, cwe_699_list, cwe_1003_list, cwe_1003_high_list),
+                       and parsed patch refs
   commit_jobs.jsonl    unique (repo, sha) pairs to fetch in stage 3, with their CVE ids
   02_summary.json      funnel counts and per-host statistics for the report
 
-Network is only used to download MITRE's CWE CSVs once (cached under data/raw/cwe/).
-Pass --no-cwe-download to stay fully offline (cwe_1003_list will be null).
+Network is only used to download MITRE's CWE data once (cached under data/raw/cwe/).
+Pass --no-cwe-download to stay fully offline (the view columns will be null).
 """
 from __future__ import annotations
 
@@ -69,6 +71,9 @@ def main() -> None:
     mapper = Cwe1003Mapper(cfg.paths.raw_nvd.parent / "cwe")
     if not mapper.available and not args.no_cwe_download:
         mapper.download()
+    if mapper.available:
+        mapper.ensure_levels()
+        mapper.check_views()
 
     nvd = NvdClient(cfg, api_key=None, raw_dir=cfg.paths.raw_nvd)
 
@@ -123,7 +128,7 @@ def main() -> None:
             "cvss": pick_cvss(cve),
             "cwe_list": cwe_ids,
             "cwe_raw": cwe_raw,
-            "cwe_1003_list": mapper.map_list(cwe_ids),
+            **mapper.view_lists(cwe_ids),
             "patch_commits": list(commits.values()),
             "other_patch_refs": other_patch_refs,
             "n_refs": len(refs),

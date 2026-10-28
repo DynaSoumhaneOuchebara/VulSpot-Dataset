@@ -1,6 +1,7 @@
-"""Per-CWE CWE-1400 category, and the hybrid top-15 + CWE-1400 label.
+"""Per-CWE CWE-1400 category.
 
-Both columns stay aligned with `cwe_list`: one entry per CWE, in the same order.
+`cwe_1400_list` stays aligned with `cwe_list`: one entry per CWE, in the same
+order. The hybrid top-15 helpers below are not written into the dataset.
 
 The hybrid scheme is fit on vulnerable rows of one config's chronological
 training split. The 15 most frequent CWEs stay as themselves. Every other CWE
