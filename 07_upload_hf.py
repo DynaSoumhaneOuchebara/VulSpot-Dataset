@@ -52,6 +52,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=None)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--message", default="Update VulSpot dataset artifacts")
     args = ap.parse_args()
     cfg = load_config(args.config)
     log = get_logger("07_upload_hf", cfg.paths.logs)
@@ -104,7 +105,7 @@ def main() -> None:
         repo_id=repo_id,
         repo_type="dataset",
         operations=ops,
-        commit_message="Update VulSpot dataset artifacts",
+        commit_message=args.message,
     )
     log.info("https://huggingface.co/datasets/%s", repo_id)
 

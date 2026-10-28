@@ -344,7 +344,7 @@ OUTPUT_COLUMNS = [
     "hash", "func_name", "func_body", "changed_lines", "changed_statements", "cve_list", "cwe_list",
     "fixed_func_idx", "language", "sink_candidates", "edit_actions", "label_confidence", "neg_type",
     "later_fixed_by", "norm_hash", "clone_group_id", "label_conflict", "is_test_file", "is_kernel_cna",
-    "cna", "cwe_1003_list", "callees", "types_used", "macros_used", "globals_used", "same_file_callee_defs",
+    "cna", "cwe_1000_list", "cwe_699_list", "cwe_1003_list", "cwe_1003_high_list", "cwe_1400_list", "callees", "types_used", "macros_used", "globals_used", "same_file_callee_defs",
     "func_start_line", "func_end_line", "func_byte_range", "cve_descriptions", "cvss", "cvss_base_score",
     "cvss_severity", "published_date", "commit_date", "parent_commit_id", "commit_message_raw",
     "commit_n_files", "commit_n_funcs", "file_n_changed_funcs", "clean", "pair_id", "pair_status",

@@ -57,7 +57,17 @@ Two localization layers:
 - `changed_lines` / `changed_statements` (`fix_*`): SecVulEval semantics. On a vulnerable row these are the **deleted/updated** statements; on a fixed row, the **added/updated** ones. Serialized as JSON strings `[[line, text], ...]` with file-absolute line numbers so existing SecVulEval loaders work.
 - `sink_candidates` (vulnerable rows only): deleted + updated statements, plus insertion anchors in the vulnerable version (the next statement, or, for a guard `if (...) return/goto/break/continue`, the first later use of a guard identifier). Each entry has abs/rel line, byte range, text, and `kind`.
 
-`is_vulnerable` is the function-level flag. `cwe_list` / `cwe_1003_list` are the type labels (raw NVD CWEs and the CWE-1003 simplified-mapping view).
+`is_vulnerable` is the function-level flag. `cwe_list` is the raw NVD CWE list.
+
+`cwe_1000_list` maps those CWEs onto the 10 pillars of the CWE-1000 view (Research Concepts). The mapping follows the primary ChildOf link in that view until it reaches a pillar. A CWE that is itself a pillar stays unchanged. A CWE with no path to a pillar is dropped. The list keeps first-seen order and drops duplicates, so it can be shorter than `cwe_list`.
+
+`cwe_699_list` maps those CWEs onto the 40 categories of the CWE-699 view (Software Development). A CWE that is one of those categories stays unchanged. A weakness the view lists under one or more categories maps to all of those categories, in the view's category order. A CWE outside the view is walked up the CWE-1000 primary ChildOf chain to the nearest ancestor that is a category or a listed member, and then to that ancestor's categories. A CWE with no such ancestor is dropped, including classes that sit above the view's members (CWE-119 has no CWE-699 category; CWE-787, which the view lists under CWE-1218, does). The list keeps first-seen order and drops duplicates.
+
+`cwe_1003_list` maps those CWEs onto any of the 130 members of the CWE-1003 view. A member stays as itself, including the 93 that sit under the 37 top-level entries. A CWE outside the view is walked up to the nearest view member and kept as that member. A CWE with no such ancestor is dropped. The list keeps first-seen order and drops duplicates.
+
+`cwe_1003_high_list` is the previous `cwe_1003_list`. It uses only the 37 top-level entries. A member among the 93 is replaced by its parent in the view. A CWE outside the view is walked up to the nearest view member and then to that member's top-level parent.
+
+`cwe_1400_list` has one entry per CWE in `cwe_list`, in the same order: the CWE-1400 category of that CWE (`"CWE-1399"`), or null when that CWE is not in the view. An empty `cwe_list` gives an empty list.
 
 ### Confidence tiers (`label_confidence`)
 
