@@ -10,7 +10,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from vulspot.build import balanced_mask
+from vulspot.build import balanced_mask, paired_frame
 from vulspot.splits import chrono_split, project_holdout_split
 
 LINUX = "https://github.com/torvalds/linux"
@@ -71,6 +71,22 @@ def test_eval_subsets():
         if t.loc[i, "is_vulnerable"]:
             assert int(t.loc[i, "fixed_func_idx"]) in paired
     assert all(t.loc[i, "project_url"] != LINUX for i in s["test_no_linux"])
+
+
+def test_paired_frame_keeps_complete_pairs_only():
+    rows = [
+        {"idx": 0, "is_vulnerable": True, "pair_id": "a", "fixed_func_idx": 1, "neg_type": None},
+        {"idx": 1, "is_vulnerable": False, "pair_id": "a", "fixed_func_idx": 1, "neg_type": "fixed"},
+        {"idx": 2, "is_vulnerable": True, "pair_id": "b", "fixed_func_idx": None, "neg_type": None},
+        {"idx": 3, "is_vulnerable": False, "pair_id": "c", "fixed_func_idx": 3, "neg_type": "untouched"},
+        {"idx": 4, "is_vulnerable": True, "pair_id": "d", "fixed_func_idx": 99, "neg_type": None},
+        {"idx": 5, "is_vulnerable": False, "pair_id": "e", "fixed_func_idx": 5, "neg_type": "patched_later_vulnerable"},
+        {"idx": 6, "is_vulnerable": True, "pair_id": "e", "fixed_func_idx": 5, "neg_type": None},
+    ]
+    out = paired_frame(pd.DataFrame(rows))
+    assert out["idx"].tolist() == [0, 1, 5, 6]
+    assert int(out.loc[out["idx"] == 0, "fixed_func_idx"].iloc[0]) == 1
+    assert int(out.loc[out["idx"] == 6, "fixed_func_idx"].iloc[0]) == 5
 
 
 def test_balanced_cap_spreads_over_year():

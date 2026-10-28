@@ -33,7 +33,7 @@ def files_to_upload(out: Path) -> list[tuple[Path, str]]:
     """(local path, repo path) pairs."""
     pairs = []
     for cfg_name in ("cpp", "multi"):
-        for variant in ("full", "balanced"):
+        for variant in ("full", "balanced", "paired"):
             d = out / cfg_name / variant
             pq = d / "data.parquet"
             if pq.exists():

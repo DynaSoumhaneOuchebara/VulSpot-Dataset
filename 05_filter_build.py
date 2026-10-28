@@ -3,7 +3,7 @@
 
     python 05_filter_build.py
     python 05_filter_build.py --config config.yaml
-    python 05_filter_build.py --splits-only     # balanced variants + splits from existing out/*/full
+    python 05_filter_build.py --splits-only     # balanced, paired, and splits from existing out/*/full
 """
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ from vulspot.build import (
     kernel_cna_flag,
     later_fixed,
     load_cves,
+    paired_frame,
     load_multi_commit_cves,
     redundant_backports,
 )
@@ -143,8 +144,14 @@ def _balanced_cfg(cfg: dict) -> dict:
     return bcfg
 
 
+def _write_paired(full: pd.DataFrame, out_dir: Path, cfg: dict, log) -> dict:
+    paired = paired_frame(full)
+    _write_frame(paired, out_dir / "paired", "data", log)
+    return _write_splits(paired, out_dir / "paired", cfg, log)
+
+
 def _rebuild_splits(cfg: dict, log) -> None:
-    """Rebuild balanced variants and all split files from the existing out/{cpp,multi}/full/data.parquet."""
+    """Rebuild balanced and paired variants and all split files from out/{cpp,multi}/full/data.parquet."""
     bcfg = _balanced_cfg(cfg)
     summary_path = cfg.paths.out / "05_summary.json"
     stats = json.loads(summary_path.read_text()) if summary_path.exists() else {}
@@ -163,6 +170,7 @@ def _rebuild_splits(cfg: dict, log) -> None:
             stats["funnel"]["balanced_kept"] = int(bal.sum())
             stats["funnel"]["balanced_dropped"] = int((~bal).sum())
         stats["splits"][f"{name}_full"] = _write_splits(full, d / "full", cfg, log)
+        stats["splits"][f"{name}_paired"] = _write_paired(full, d, cfg, log)
         balanced = full.loc[bal]
         del full
         _write_frame(balanced, d / "balanced", "data", log)
@@ -180,7 +188,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=None)
     ap.add_argument("--splits-only", action="store_true",
-                    help="reuse out/*/full/data.parquet; rebuild balanced variants and split files only")
+                    help="reuse out/*/full/data.parquet; rebuild balanced, paired, and split files only")
     args = ap.parse_args()
     cfg = load_config(args.config)
     log = get_logger("05_filter_build", cfg.paths.logs)
@@ -283,8 +291,10 @@ def main() -> None:
     stats["splits"] = {
         "cpp_full": _write_splits(cpp, cpp_dir / "full", cfg, log),
         "cpp_balanced": _write_splits(cpp.loc[cpp_bal].copy(), cpp_dir / "balanced", cfg, log),
+        "cpp_paired": _write_paired(cpp, cpp_dir, cfg, log),
         "multi_full": _write_splits(multi, multi_dir / "full", cfg, log),
         "multi_balanced": _write_splits(multi.loc[bal].copy(), multi_dir / "balanced", cfg, log),
+        "multi_paired": _write_paired(multi, multi_dir, cfg, log),
     }
     write_json(cfg.paths.interim / "05_summary.json", stats, indent=2)
     write_json(cfg.paths.out / "05_summary.json", stats, indent=2)

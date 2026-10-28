@@ -6,8 +6,8 @@ categories. cwe_1003_list is any of the 130 CWE-1003 members. The previous
 cwe_1003_list (37 top-level entries) is renamed to cwe_1003_high_list.
 top15_cwe_1400 is removed.
 
-full and balanced are both rewritten, in parquet and jsonl. Split files are
-index lists into those tables, so every split sees the new columns.
+full, balanced, and paired are rewritten, in parquet and jsonl. Split files
+are index lists into those tables, so every split sees the new columns.
 
     python 08_add_cwe_columns.py
 """
@@ -244,8 +244,11 @@ def main() -> None:
     planned = []
     stored = {}
     for name in ("cpp", "multi"):
-        for variant in ("full", "balanced"):
+        for variant in ("full", "balanced", "paired"):
             path = cfg.paths.out / name / variant / "data.parquet"
+            if variant == "paired" and not path.exists():
+                log.info("skip %s", path)
+                continue
             log.info("labeling %s", path)
             idxs, cwe_values, old_high = _load(path)
             columns = _label_rows(cwe_values, mapper)

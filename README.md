@@ -23,7 +23,7 @@ export HF_TOKEN=...         # required for stage 7
 | `02_extract_commit_refs.py` | 1b patch URLs + CWE-1003 | CWE CSVs once | `data/interim/cves.jsonl.gz`, `commit_jobs.jsonl` |
 | `03_fetch_commits.py` | 2 GitHub artifacts | yes | `data/raw/commits/<owner>__<repo>/<sha>/` |
 | `04_extract_functions.py` | 3 functions + diffs | no | `data/interim/functions.jsonl.gz` |
-| `05_filter_build.py` | 4–5 filter, dedup, splits | no | `data/out/{cpp,multi}/{full,balanced}/` |
+| `05_filter_build.py` | 4–5 filter, dedup, splits | no | `data/out/{cpp,multi}/{full,balanced,paired}/` |
 | `06_report.py` | report | no | `data/out/report.md` |
 | `07_upload_hf.py` | 6 Hub upload | yes | `DynaOuchebara/VulSpot` |
 

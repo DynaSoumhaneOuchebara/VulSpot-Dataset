@@ -326,6 +326,30 @@ def assign_idx_and_pairs(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def paired_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Vulnerable rows whose fixed partner is in `df`, plus those partners.
+
+    `idx` and `fixed_func_idx` stay as they are in `df`. A vulnerable row is
+    dropped when the partner is missing. Untouched functions and functions
+    added by the patch are dropped.
+    """
+    if df["idx"].duplicated().any():
+        raise ValueError("idx values are not unique")
+    lookup = df.set_index("idx")
+    vul = df.loc[df["is_vulnerable"].astype(bool) & df["fixed_func_idx"].notna(), ["idx", "pair_id", "fixed_func_idx"]]
+    partner = vul["fixed_func_idx"].astype("int64")
+    present = partner.isin(lookup.index)
+    vul, partner = vul.loc[present], partner.loc[present]
+    if vul.empty:
+        return df.iloc[0:0].copy()
+    fixed = lookup.loc[partner.to_numpy()]
+    ok = (~fixed["is_vulnerable"].astype(bool).to_numpy()) & (fixed["pair_id"].to_numpy() == vul["pair_id"].to_numpy())
+    vul = vul.loc[ok]
+    partner = partner.loc[ok]
+    keep = set(vul["idx"].astype("int64")) | set(partner.astype("int64"))
+    return df.loc[df["idx"].isin(keep)].copy()
+
+
 def clean_flag(df: pd.DataFrame) -> pd.Series:
     conf_ok = df["label_confidence"].isin(["high", "medium"]) | df["label_confidence"].isna()
     # untouched negatives have null confidence; they are clean if not later-vulnerable

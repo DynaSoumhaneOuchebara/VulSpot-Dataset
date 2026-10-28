@@ -8,12 +8,16 @@ configs:
         path: cpp/full/data.parquet
       - split: balanced
         path: cpp/balanced/data.parquet
+      - split: paired
+        path: cpp/paired/data.parquet
   - config_name: multi
     data_files:
       - split: full
         path: multi/full/data.parquet
       - split: balanced
         path: multi/balanced/data.parquet
+      - split: paired
+        path: multi/paired/data.parquet
 ---
 
 # VulSpot
@@ -35,10 +39,11 @@ multi = load_dataset("DynaOuchebara/VulSpot", "multi", split="full")
 | `cpp` | C/C++ only (`.c/.cc/.cpp/.h/.hpp/...`) |
 | `multi` | every supported language, with a `language` column |
 
-Each config has two splits:
+Each config has three splits:
 
 - `full` — every row that survived structural filters
 - `balanced` — `full` with a per-year cap on post-2024 kernel.org-CNA Linux CVEs (see `is_kernel_cna`)
+- `paired` — `full` restricted to vulnerable functions whose fixed version is also in `full`, plus those fixed rows. A vulnerable function with no fixed row is dropped, as are untouched functions and functions added by the patch. `idx` and `fixed_func_idx` are the same values as in `full`, so the patched function is the row with `idx == fixed_func_idx`.
 
 Chronological and project-holdout index files live next to the parquet (`splits/chrono.json`, `splits/project_holdout.json`). They refer to the `idx` column.
 
