@@ -14,7 +14,7 @@ nvd:
   window_days: 120                 # NVD API 2.0 max range is 120 days
   results_per_page: 2000
   start_date: "1988-01-01"         # NVD lists a few CVE-1999-* entries as published in 1988-1998
-  cutoff_date: null                # null = today (UTC)
+  cutoff_date: null                # null = now (UTC). A YYYY-MM-DD includes that whole UTC day.
   # requests per 30 s: 5 without key, 50 with key
   sleep_without_key: 6.5
   sleep_with_key: 0.7
@@ -164,3 +164,12 @@ splits:
 hf:
   repo_id: DynaOuchebara/VulSpot
   private: false
+
+update:
+  # After a finished version, the next unattended run is this many months later.
+  # It fetches CVEs published after covered_through (version.json) through the
+  # scheduled day, then rebuilds and uploads. Completed NVD windows and commits
+  # are skipped.
+  every_months: 6
+  start_hour_utc: 6
+  max_stage_retries: 3

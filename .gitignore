@@ -11,6 +11,7 @@ data/mirrors/
 data/interim/
 data/out/
 logs/
+secrets.env
 *.tmp
 .DS_Store
 # keep the three SecVulEval fixture commits used by tests

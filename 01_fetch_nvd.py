@@ -6,7 +6,7 @@ Later runs: lastModified sync since the previous run (new + updated CVEs).
 
     python 01_fetch_nvd.py                # full fetch (resume) then incremental if already complete
     python 01_fetch_nvd.py --incremental  # only lastModified sync
-    python 01_fetch_nvd.py --cutoff 2026-10-09
+    python 01_fetch_nvd.py --cutoff 2026-10-09   # that whole UTC day is included
 
 Requires NVD_API_KEY (optional but strongly recommended; 10x rate limit).
 """
@@ -21,14 +21,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from vulspot.config import env_secret, load_config
 from vulspot.log import get_logger
-from vulspot.nvd import NvdClient
+from vulspot.nvd import NvdClient, inclusive_day, parse_cutoff
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=None)
     ap.add_argument("--incremental", action="store_true", help="only run lastModified sync")
-    ap.add_argument("--cutoff", default=None, help="YYYY-MM-DD (default: config or today)")
+    ap.add_argument("--cutoff", default=None, help="YYYY-MM-DD, inclusive (default: config or now)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -38,10 +38,10 @@ def main() -> None:
     start = datetime.strptime(cfg["nvd"]["start_date"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
     cutoff_s = args.cutoff or cfg["nvd"].get("cutoff_date")
     if cutoff_s:
-        cutoff = datetime.strptime(cutoff_s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        cutoff = parse_cutoff(str(cutoff_s))
     else:
         cutoff = datetime.now(timezone.utc)
-    log.info("NVD fetch: start=%s cutoff=%s", start.date(), cutoff.date())
+    log.info("NVD fetch: start=%s through=%s", start.date(), inclusive_day(cutoff).date())
 
     state = client.load_state()
     if args.incremental or state.get("last_sync"):

@@ -45,6 +45,9 @@ def files_to_upload(out: Path) -> list[tuple[Path, str]]:
     report = out / "report.md"
     if report.exists():
         pairs.append((report, "report.md"))
+    version = out / "version.json"
+    if version.exists():
+        pairs.append((version, "version.json"))
     return pairs
 
 

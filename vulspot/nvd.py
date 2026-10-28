@@ -32,6 +32,30 @@ class Window:
         return f"{self.kind}_{self.start:%Y-%m-%d}_{self.end:%Y-%m-%d}.json.gz"
 
 
+def parse_cutoff(value: str) -> datetime:
+    """Cutoff for an NVD window.
+
+    A calendar day (`YYYY-MM-DD`) includes that whole UTC day: the returned
+    instant is the next midnight, and window ends are exclusive. A full
+    timestamp is used as given.
+    """
+    text = value.strip()
+    if len(text) == 10:
+        day = datetime.strptime(text, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return day + timedelta(days=1)
+    dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def inclusive_day(cutoff: datetime) -> datetime:
+    """Last instant the cutoff covers, for logs. Midnight means the previous day."""
+    if (cutoff.hour, cutoff.minute, cutoff.second, cutoff.microsecond) == (0, 0, 0, 0):
+        return cutoff - timedelta(days=1)
+    return cutoff
+
+
 def windows(start: datetime, end: datetime, days: int, kind: str) -> Iterator[Window]:
     cur = start
     while cur < end:
