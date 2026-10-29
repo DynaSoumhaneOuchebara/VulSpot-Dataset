@@ -1,14 +1,17 @@
-"""Per-CWE CWE-1400 category.
+"""Per-CWE CWE-1400 category and the top-15 hybrid column.
 
 `cwe_1400_list` stays aligned with `cwe_list`: one entry per CWE, in the same
-order. The hybrid top-15 helpers below are not written into the dataset.
+order.
 
-The hybrid scheme is fit on vulnerable rows of one config's chronological
-training split. The 15 most frequent CWEs stay as themselves. Every other CWE
-is replaced by its CWE-1400 category, and a category that labels fewer than
-100 of those training rows is merged into OTHER. A CWE with no category is
-OTHER. A category is counted once per training row that contains it on a CWE
-outside the top 15.
+`top15_cwe_1400` is the same length and the same order. It is fit on the
+vulnerable rows of that table's chronological training split. A CWE among the
+15 most frequent there is copied from `cwe_list`. Every other entry is copied
+from `cwe_1400_list` (null when that CWE is not in the view). Ties break toward
+the smaller CWE id.
+
+`fit_scheme` / `top15_labels` are a separate label set: categories that cover
+fewer than 100 of those training rows, and CWEs with no category, become OTHER.
+That set is not written into the dataset.
 """
 from __future__ import annotations
 
@@ -109,6 +112,61 @@ def fit_scheme(
                 assigned[cat] += 1
     small = frozenset(cat for cat, n in assigned.items() if n < min_rows)
     return HybridScheme(freq=dict(freq), top=top, small=small, categories=categories)
+
+
+def _cwe_sort_num(cid: str) -> int:
+    m = _CWE_NUM.search(str(cid))
+    return int(m.group(1)) if m else 10**12
+
+
+def most_frequent_cwes(lists, k: int = TOP_K) -> tuple[str, ...]:
+    """The k most frequent CWE strings. Ties break toward the smaller CWE id."""
+    freq: Counter[str] = Counter()
+    for xs in lists:
+        if xs is None:
+            continue
+        for item in xs:
+            if item is None:
+                continue
+            freq[str(item)] += 1
+    ranked = sorted(freq.items(), key=lambda kv: (-kv[1], _cwe_sort_num(kv[0]), kv[0]))
+    return tuple(cid for cid, _ in ranked[:k])
+
+
+def _copied_cwe(value):
+    """String copy of a list entry. Null stays null."""
+    if value is None or type(value).__name__ == "NAType":
+        return None
+    if isinstance(value, float) and value != value:
+        return None
+    return str(value)
+
+
+def _as_cwe_list(value) -> list:
+    if value is None or type(value).__name__ == "NAType":
+        return []
+    if isinstance(value, float) and value != value:
+        return []
+    return list(value)
+
+
+def align_top15_cwe_1400(cwe_lists, cwe_1400_lists, top: set[str]) -> list[list]:
+    """One label per `cwe_list` entry: the CWE itself when it is in `top`, else the CWE-1400 entry."""
+    out: list[list] = []
+    for cwes, cats in zip(cwe_lists, cwe_1400_lists):
+        cwes = _as_cwe_list(cwes)
+        cats = _as_cwe_list(cats)
+        if len(cwes) != len(cats):
+            raise ValueError(f"cwe_list and cwe_1400_list differ in length ({len(cwes)} vs {len(cats)})")
+        row = []
+        for cwe, cat in zip(cwes, cats):
+            copied = _copied_cwe(cwe)
+            if copied is not None and copied in top:
+                row.append(copied)
+            else:
+                row.append(_copied_cwe(cat))
+        out.append(row)
+    return out
 
 
 def cwe_1400_aligned(ids: list[str], categories: dict[str, str]) -> list[str | None]:

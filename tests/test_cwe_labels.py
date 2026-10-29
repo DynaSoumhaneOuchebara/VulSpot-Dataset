@@ -21,7 +21,14 @@ from vulspot.cwe import (
     view_levels_from_xml,
 )
 from vulspot.config import load_config
-from vulspot.cwe_labels import cwe_1400_aligned, fit_scheme, parse_cwe_ids, top15_labels
+from vulspot.cwe_labels import (
+    align_top15_cwe_1400,
+    cwe_1400_aligned,
+    fit_scheme,
+    most_frequent_cwes,
+    parse_cwe_ids,
+    top15_labels,
+)
 
 CATS = {"476": "1399", "416": "1399", "20": "1406", "122": "1399", "7": "1405"}
 
@@ -144,10 +151,17 @@ def test_699_uses_membership_then_walks_up_the_primary_chain():
     ]
 
 
+def test_top15_cwe_1400_keeps_frequent_cwes_and_copies_the_category():
+    cwes = [["CWE-476", "CWE-20", "CWE-399"], []]
+    cats = [["CWE-1399", "CWE-1406", None], []]
+    assert most_frequent_cwes([["CWE-476"], ["CWE-476"], ["CWE-20"]], k=1) == ("CWE-476",)
+    assert align_top15_cwe_1400(cwes, cats, {"CWE-476"}) == [["CWE-476", "CWE-1406", None], []]
+    assert align_top15_cwe_1400(cwes, cats, set()) == cats
+
+
 def test_output_columns_are_the_current_cwe_schema():
-    for name in ("cwe_1000_list", "cwe_699_list", "cwe_1003_list", "cwe_1003_high_list", "cwe_1400_list"):
+    for name in ("cwe_1000_list", "cwe_699_list", "cwe_1003_list", "cwe_1003_high_list", "cwe_1400_list", "top15_cwe_1400"):
         assert name in OUTPUT_COLUMNS
-    assert "top15_cwe_1400" not in OUTPUT_COLUMNS
 
 
 def test_cached_views_match_the_dataset_columns():
@@ -186,10 +200,12 @@ def test_stage5_writes_view_columns_from_cwe_list():
     row["cwe_list"] = raw
     out = stage5._attach_cwe_labels(pd.DataFrame([row]), load_cwe1400(cwe_dir), mapper)
     assert list(out.columns) == OUTPUT_COLUMNS
-    assert "top15_cwe_1400" not in out.columns
+    assert out.iloc[0]["top15_cwe_1400"] is None
     for name, values in mapper.view_lists(raw).items():
         assert list(out.iloc[0][name]) == values
-    assert list(out.iloc[0]["cwe_1400_list"]) == cwe_1400_aligned(parse_cwe_ids(raw), load_cwe1400(cwe_dir))
+    cats = cwe_1400_aligned(parse_cwe_ids(raw), load_cwe1400(cwe_dir))
+    assert list(out.iloc[0]["cwe_1400_list"]) == cats
+    assert align_top15_cwe_1400([raw], [cats], {"CWE-476"}) == [[cats[0], "CWE-476"]]
 
 
 def test_view_levels_parse_members_parents_and_categories():

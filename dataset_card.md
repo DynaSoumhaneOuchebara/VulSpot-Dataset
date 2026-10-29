@@ -74,6 +74,8 @@ Two localization layers:
 
 `cwe_1400_list` has one entry per CWE in `cwe_list`, in the same order: the CWE-1400 category of that CWE (`"CWE-1399"`), or null when that CWE is not in the view. An empty `cwe_list` gives an empty list.
 
+`top15_cwe_1400` has one entry per CWE in `cwe_list`, in the same order. It is fit separately on each table, using the vulnerable rows of that table's chronological training split (`splits/chrono.json`). The 15 most frequent CWEs on those rows are kept as in `cwe_list`. Every other entry is copied from `cwe_1400_list` at the same position, including null when that CWE is not in the view. Ties break toward the smaller CWE id. An empty `cwe_list` gives an empty list.
+
 ### Confidence tiers (`label_confidence`)
 
 - `high` — the commit changes exactly one function (test files excluded), or the function is named in a linked CVE description

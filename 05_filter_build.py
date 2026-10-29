@@ -43,7 +43,13 @@ from vulspot.io import iter_jsonl, write_json
 from vulspot.langs import LanguageResolver
 from vulspot.log import get_logger
 from vulspot.cwe import VIEW_COLUMNS, Cwe1003Mapper
-from vulspot.cwe_labels import cwe_1400_aligned, load_cwe1400, parse_cwe_ids
+from vulspot.cwe_labels import (
+    align_top15_cwe_1400,
+    cwe_1400_aligned,
+    load_cwe1400,
+    most_frequent_cwes,
+    parse_cwe_ids,
+)
 from vulspot.splits import chrono_split, project_holdout_split
 
 
@@ -125,6 +131,18 @@ def _write_splits(df: pd.DataFrame, out_dir: Path, cfg: dict, log) -> dict:
     return {"chrono": chrono["meta"], "project_holdout": hold["meta"]}
 
 
+def _with_top15(df: pd.DataFrame, cfg: dict, log) -> pd.DataFrame:
+    """Fit top15_cwe_1400 on this table's chronological training split and append it."""
+    frac = cfg["splits"]["chrono"]
+    train_idx = set(chrono_split(df, (frac["train"], frac["val"], frac["test"]))["train"])
+    vul = df["idx"].isin(train_idx) & df["is_vulnerable"].astype(bool)
+    top = most_frequent_cwes(df.loc[vul, "cwe_list"], k=15)
+    log.info("top15_cwe_1400 from %d vulnerable training rows: %s", int(vul.sum()), ", ".join(top))
+    out = df.copy(deep=False)
+    out["top15_cwe_1400"] = align_top15_cwe_1400(out["cwe_list"], out["cwe_1400_list"], set(top))
+    return out[OUTPUT_COLUMNS]
+
+
 def _attach_cwe_labels(df: pd.DataFrame, categories: dict[str, str], mapper: Cwe1003Mapper) -> pd.DataFrame:
     """Map every row's cwe_list onto the CWE-1000, CWE-699, CWE-1003, and CWE-1400 views."""
     parsed = [parse_cwe_ids(x) for x in df["cwe_list"]]
@@ -144,7 +162,7 @@ def _balanced_cfg(cfg: dict) -> dict:
 
 
 def _write_paired(full: pd.DataFrame, out_dir: Path, cfg: dict, log) -> dict:
-    paired = paired_frame(full)
+    paired = _with_top15(paired_frame(full), cfg, log)
     _write_frame(paired, out_dir / "paired", "data", log)
     return _write_splits(paired, out_dir / "paired", cfg, log)
 
@@ -170,7 +188,7 @@ def _rebuild_splits(cfg: dict, log) -> None:
             stats["funnel"]["balanced_dropped"] = int((~bal).sum())
         stats["splits"][f"{name}_full"] = _write_splits(full, d / "full", cfg, log)
         stats["splits"][f"{name}_paired"] = _write_paired(full, d, cfg, log)
-        balanced = full.loc[bal]
+        balanced = _with_top15(full.loc[bal].copy(), cfg, log)
         del full
         _write_frame(balanced, d / "balanced", "data", log)
         stats["splits"][f"{name}_balanced"] = _write_splits(balanced, d / "balanced", cfg, log)
@@ -278,10 +296,10 @@ def main() -> None:
 
     cpp_dir = cfg.paths.out / "cpp"
     multi_dir = cfg.paths.out / "multi"
-    _write_frame(cpp, cpp_dir / "full", "data", log)
-    _write_frame(cpp.loc[cpp_bal].copy(), cpp_dir / "balanced", "data", log)
-    _write_frame(multi, multi_dir / "full", "data", log)
-    _write_frame(multi.loc[bal].copy(), multi_dir / "balanced", "data", log)
+    _write_frame(_with_top15(cpp, cfg, log), cpp_dir / "full", "data", log)
+    _write_frame(_with_top15(cpp.loc[cpp_bal].copy(), cfg, log), cpp_dir / "balanced", "data", log)
+    _write_frame(_with_top15(multi, cfg, log), multi_dir / "full", "data", log)
+    _write_frame(_with_top15(multi.loc[bal].copy(), cfg, log), multi_dir / "balanced", "data", log)
 
     stats["splits"] = {
         "cpp_full": _write_splits(cpp, cpp_dir / "full", cfg, log),
