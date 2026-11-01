@@ -60,7 +60,7 @@ Chronological and project-holdout index files live next to the parquet (`splits/
 Two localization layers:
 
 - `changed_lines` / `changed_statements` (`fix_*`): SecVulEval semantics. On a vulnerable row these are the **deleted/updated** statements; on a fixed row, the **added/updated** ones. Serialized as JSON strings `[[line, text], ...]` with file-absolute line numbers so existing SecVulEval loaders work.
-- `sink_candidates` (vulnerable rows only): deleted + updated statements, plus insertion anchors in the vulnerable version (the next statement, or, for a guard `if (...) return/goto/break/continue`, the first later use of a guard identifier). Each entry has abs/rel line, byte range, text, and `kind`.
+- `sink_candidates` (vulnerable rows only): deleted + updated statements, plus one anchor per group of consecutive inserted statements, in the vulnerable version. `anchor_guarded_use`: for an inserted guard `if (...) return/goto/break/continue`, the first later use of a guard identifier. `anchor_dataflow`: the statement tied to the inserted code by a shared variable, with the rule in `anchor_rule` (`guard_use`, `status_def`, `init_use`, `release_acquire`, `lock_region`, `jump_enclosing`, `shared_ident`). `anchor_next` / `anchor_prev`: the neighbouring statement, only when nothing shares an identifier. Each entry has abs/rel line, byte range, text, and `kind`.
 
 `is_vulnerable` is the function-level flag. `cwe_list` is the raw NVD CWE list.
 

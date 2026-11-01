@@ -50,6 +50,7 @@ The three SecVulEval linux commits (`04bcef2a`, `05692d70`, `0926f910`) are alre
 source .venv/bin/activate
 python tests/test_stage3_secvuleval.py --verbose
 python tests/test_sink_anchor.py
+python tests/test_sink_dataflow.py
 ```
 
 ## Network stages (run on the login node / SLURM)

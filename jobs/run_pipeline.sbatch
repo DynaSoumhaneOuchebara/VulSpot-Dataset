@@ -4,6 +4,7 @@
 #   sbatch --export=ALL,VULSPOT_STAGE=nvd     jobs/run_pipeline.sbatch
 #   sbatch --export=ALL,VULSPOT_STAGE=commits jobs/run_pipeline.sbatch
 #   sbatch --export=ALL,VULSPOT_STAGE=build   jobs/run_pipeline.sbatch
+#   sbatch --export=ALL,VULSPOT_STAGE=build,VULSPOT_EXTRACT_ARGS=--fresh jobs/run_pipeline.sbatch
 #   sbatch --export=ALL,VULSPOT_STAGE=upload  jobs/run_pipeline.sbatch
 #   sbatch --export=ALL,VULSPOT_STAGE=all     jobs/run_pipeline.sbatch
 #

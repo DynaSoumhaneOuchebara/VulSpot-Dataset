@@ -6,6 +6,7 @@
 #   nohup bash jobs/run_pipeline.sh nvd     > logs/nohup_nvd.log 2>&1 &
 #   nohup bash jobs/run_pipeline.sh commits > logs/nohup_commits.log 2>&1 &
 #   nohup bash jobs/run_pipeline.sh build   > logs/nohup_build.log 2>&1 &
+#   VULSPOT_EXTRACT_ARGS=--fresh nohup bash jobs/run_pipeline.sh build > logs/nohup_build.log 2>&1 &
 #   nohup bash jobs/run_pipeline.sh upload  > logs/nohup_upload.log 2>&1 &
 #   nohup bash jobs/run_pipeline.sh all     > logs/nohup_all.log 2>&1 &
 set -euo pipefail
@@ -31,7 +32,10 @@ case "$STAGE" in
     run "$PY" 03_fetch_commits.py
     ;;
   build)
-    run "$PY" 04_extract_functions.py
+    # VULSPOT_EXTRACT_ARGS=--fresh re-extracts every commit (e.g. after a sinks.py change);
+    # without it, commits already in commit_extract.jsonl are skipped.
+    # shellcheck disable=SC2086
+    run "$PY" 04_extract_functions.py ${VULSPOT_EXTRACT_ARGS:-}
     run "$PY" 05_filter_build.py
     run "$PY" 06_report.py
     ;;
