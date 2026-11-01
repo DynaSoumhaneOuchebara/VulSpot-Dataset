@@ -60,7 +60,7 @@ Chronological and project-holdout index files live next to the parquet (`splits/
 Two localization layers:
 
 - `changed_lines` / `changed_statements` (`fix_*`): SecVulEval semantics. On a vulnerable row these are the **deleted/updated** statements; on a fixed row, the **added/updated** ones. Serialized as JSON strings `[[line, text], ...]` with file-absolute line numbers so existing SecVulEval loaders work.
-- `sink_candidates` (vulnerable rows only): deleted + updated statements, plus one anchor per group of consecutive inserted statements, in the vulnerable version. `anchor_guarded_use`: for an inserted guard `if (...) return/goto/break/continue`, the first later use of a guard identifier. `anchor_dataflow`: the statement tied to the inserted code by a shared variable, with the rule in `anchor_rule` (`guard_use`, `status_def`, `init_use`, `release_acquire`, `lock_region`, `jump_enclosing`, `shared_ident`). `anchor_next` / `anchor_prev`: the neighbouring statement, only when nothing shares an identifier. Each entry has abs/rel line, byte range, text, and `kind`.
+- `sink_candidates` (vulnerable rows only): deleted + updated statements, plus one anchor per group of consecutive inserted statements, in the vulnerable version. `anchor_guarded_use`: for an inserted guard `if (...) return/goto/break/continue`, the first later use of a guard identifier. `anchor_dataflow`: the statement tied to the inserted code by a shared variable, with the rule in `anchor_rule` (`guard_use`, `status_def`, `init_use`, `release_acquire`, `lock_region`, `jump_enclosing`, `shared_ident`). `anchor_next` / `anchor_prev`: the neighbouring statement, only when nothing shares an identifier. A fix that only reorders statements gets `anchor_dataflow` entries too: `move_early` on a statement moved later (it ran too early), `move_crossed` on the first statement a statement moved earlier jumped over and shares an identifier with. Each entry has abs/rel line, byte range, text, and `kind`.
 
 `is_vulnerable` is the function-level flag. `cwe_list` is the raw NVD CWE list.
 
@@ -88,7 +88,7 @@ Two localization layers:
 - `untouched` — unchanged function from a file that also contains a changed function
 - `patched_later_vulnerable` — a `fixed` row whose function is modified again by a later CVE commit in this dataset (`later_fixed_by`)
 
-`clean` is true when `label_confidence ∈ {high, medium}` (or the row is an untouched negative), `label_conflict` is false, and `neg_type` is not `patched_later_vulnerable`.
+`clean` is true when `label_confidence ∈ {high, medium}` (or the row is an untouched negative), `label_conflict` is false, `neg_type` is not `patched_later_vulnerable`, and the row is not a vulnerable function in a test file or a vulnerable function whose fix changed only comments in it (the real fix is elsewhere).
 
 `is_kernel_cna` flags CVEs assigned by the kernel.org CNA with `published_date ≥ 2024-02-01`.
 

@@ -345,13 +345,23 @@ def paired_frame(df: pd.DataFrame) -> pd.DataFrame:
     return df.loc[df["idx"].isin(keep)].copy()
 
 
+def _comment_only_fix(row) -> bool:
+    """Paired row whose fix changed only comments in this function (the real fix is elsewhere)."""
+    if row.get("pair_status") not in ("paired", "renamed"):
+        return False
+    acts = row.get("edit_actions")
+    acts = json.loads(acts) if isinstance(acts, str) else (acts or [])
+    return bool(acts) and not any(a.get("is_code") for a in acts)
+
+
 def clean_flag(df: pd.DataFrame) -> pd.Series:
     conf_ok = df["label_confidence"].isin(["high", "medium"]) | df["label_confidence"].isna()
     # untouched negatives have null confidence; they are clean if not later-vulnerable
     not_conflict = ~df["label_conflict"].fillna(False)
     not_later = df["neg_type"].fillna("") != "patched_later_vulnerable"
     not_test_pos = ~(df["is_test_file"].fillna(False) & df["is_vulnerable"].astype(bool))
-    return conf_ok & not_conflict & not_later & not_test_pos
+    not_comment_pos = ~(df["is_vulnerable"].astype(bool) & df.apply(_comment_only_fix, axis=1))
+    return conf_ok & not_conflict & not_later & not_test_pos & not_comment_pos
 
 
 def cpp_mask(df: pd.DataFrame, resolver: LanguageResolver) -> pd.Series:

@@ -20,6 +20,12 @@
             shared_ident     otherwise: nearest statement sharing the rarest identifiers with the group
        anchor_next        : nothing shares an identifier -> the next before-statement after the insertion
        anchor_prev        : insertion at the end of the function -> the previous statement
+  move                    -> only when the fix has no delete / update / insert (a pure reordering), as
+                             `anchor_dataflow` (moved bare jumps are skipped):
+            move_early       statement moved later: the statement itself, at its old place (it ran too early)
+            move_crossed     statement moved earlier: the first statement it jumped over that uses what it
+                             assigns, else any of its identifiers (it ran before the fix's statement);
+                             none -> move_early
 """
 from __future__ import annotations
 
@@ -40,6 +46,7 @@ _SINK_KINDS_ORDER = {"deleted": 0, "updated": 1, "anchor_guarded_use": 2, "ancho
 _STATUS_NAMES = {"err", "ret", "rc", "error", "status", "result", "res", "r", "rv", "retval", "rval",
                  "ret_val", "result_code", "error_code", "errcode", "ok", "success", "failed"}
 _CALLEE = re.compile(r"^\s*(?:[\w.\->\[\]*&]+\s*=\s*)?\(?\s*([A-Za-z_]\w*)\s*\(")
+_ASSIGN_LHS = re.compile(r"^\s*([^=;(]+?)\s*(?:[-+*/%|&^]|<<|>>)?=(?!=)")
 _RESET = re.compile(r"^\s*([^=;]+?)\s*=\s*(?:NULL|nullptr|0|false|-1|\{\s*0?\s*\})\s*;")
 _ZERO_CALLS = {"memset", "bzero", "memzero_explicit", "explicit_bzero", "SecureZeroMemory", "ZeroMemory"}
 _RELEASE_TOKENS = {"free", "put", "release", "unref", "destroy", "unlock", "close", "unregister", "unmap",
@@ -405,5 +412,37 @@ def sink_candidates(before: Function, after: Function, actions: list[EditAction]
                 continue
         if prv is not None:
             add(before.units[prv], "anchor_prev", text)
+
+    # 7. reordering-only fixes: nothing deleted, updated or inserted, statements only moved
+    if not any(a.is_code and a.action in ("delete", "update", "insert") for a in actions):
+        for a in actions:
+            if a.action != "move" or not a.is_code or a.before_idx is None:
+                continue
+            u = before.units[a.before_idx]
+            if not bv.is_anchorable(u) or _is_jump(u, spec):
+                continue
+            old = a.before_idx
+            land = insertion_anchor_index(actions, a)
+            land = len(before.units) if land is None else land
+            if land > old:
+                crossed = [k for k in range(old + 1, land) if bv.is_anchorable(bv.units[k])]
+            else:
+                crossed = [k for k in range(land, old) if bv.is_anchorable(bv.units[k])]
+            if not crossed:
+                continue   # only crossed blank lines / comments: not a reordering
+            if land > old:
+                # moved later: it ran too early (release before a use, assignment before a free)
+                add(u, "anchor_dataflow", u.text, None, "move_early")
+                continue
+            # moved earlier: the crossed statements ran before it (copy before a clamp, use before a reset).
+            # What it assigns (`len` in `len = min_t(.., sizeof(sas))`) names the victim better than its inputs.
+            m = _ASSIGN_LHS.match(u.text)
+            lhs = _specific_first(bv.idents(m.group(1))) if m else []
+            hit = (bv.forward(crossed[0], lhs, limit=old - crossed[0], ordered=True)
+                   or bv.forward(crossed[0], bv.idents(u.text), limit=old - crossed[0]))
+            if hit:
+                add(bv.units[hit[0]], "anchor_dataflow", u.text, hit[1], "move_crossed")
+            else:
+                add(u, "anchor_dataflow", u.text, None, "move_early")
 
     return sorted(out.values(), key=lambda c: c.abs_line)
