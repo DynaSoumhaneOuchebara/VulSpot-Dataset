@@ -162,7 +162,7 @@ splits:
   seed: 13
 
 hf:
-  repo_id: DynaOuchebara/VulSpot
+  repo_id: ods01/VulSpot
   private: false
 
 update:
@@ -170,6 +170,6 @@ update:
   # It fetches CVEs published after covered_through (version.json) through the
   # scheduled day, then rebuilds and uploads. Completed NVD windows and commits
   # are skipped.
-  every_months: 6
+  every_months: 1
   start_hour_utc: 6
   max_stage_retries: 3

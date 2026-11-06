@@ -1,4 +1,4 @@
-"""Six-month dataset update: from the last covered day through the scheduled day.
+"""Monthly dataset update: from the last covered day through the scheduled day.
 
 The NVD cache is resumable. Publication windows that already exist are skipped,
 and the one window that was truncated at the previous cutoff is fetched again

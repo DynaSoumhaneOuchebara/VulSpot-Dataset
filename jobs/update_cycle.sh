@@ -101,6 +101,27 @@ run_py() {
   echo "[$(date -Is)] <<< $*"
 }
 
+# Copy the version on disk to snapshots/out_<previous covered_through> before the
+# build overwrites it. A finished snapshot is never touched again, so a rerun of
+# the build stage keeps the pristine previous version.
+snapshot_previous() {
+  local out prev snap
+  out="$("$PY" -c 'from vulspot.config import load_config; print(load_config().paths.out)')"
+  prev="$("$PY" -c 'import json; from vulspot.config import load_config; from vulspot.update import plan_path; print(json.loads(plan_path(load_config().paths.logs).read_text())["previous_covered_through"])')"
+  snap="$(dirname "$out")/snapshots/out_${prev}"
+  if [[ ! -d "$out/cpp" ]]; then
+    echo "no previous version in $out; no snapshot"
+  elif [[ -e "$snap" ]]; then
+    echo "snapshot $snap already exists"
+  else
+    mkdir -p "$(dirname "$snap")"
+    rm -rf "${snap}.tmp"
+    cp -a "$out" "${snap}.tmp"
+    mv "${snap}.tmp" "$snap"
+    echo "previous version copied to $snap"
+  fi
+}
+
 run_stage() {
   case "$STAGE" in
     plan)
@@ -121,6 +142,7 @@ run_stage() {
       run_py 03_fetch_commits.py
       ;;
     build)
+      snapshot_previous
       run_py 04_extract_functions.py
       run_py 05_filter_build.py
       run_py 06_report.py
@@ -129,7 +151,7 @@ run_stage() {
       require_secret HF_TOKEN
       local day
       day="$("$PY" -m vulspot.update cutoff-day)"
-      run_py 07_upload_hf.py --message "Update VulSpot through $day"
+      run_py 07_upload_hf.py --message "Update VulSpot through $day" --tag "v$day"
       run_py -m vulspot.update record
       ;;
     all)

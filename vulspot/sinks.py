@@ -3,21 +3,20 @@
   deleted / updated       -> the before-statement itself
   insert                  -> an anchor in the before version. Consecutive inserted statements form one
                              insertion group, anchored once (declarations never anchor on their own):
-       anchor_guarded_use : the group holds a guard (`if (cond) return/goto/break/continue;`) and an
-                            identifier of `cond` is used later in the before function -> first such later
-                            statement
        anchor_dataflow    : the before-statement(s) the inserted code is tied to by a shared variable,
                             found by the rule in `anchor_rule`:
-            guard_use        any other inserted `if (cond)`: first later use of a `cond` variable
-            status_def       guard on a status variable only (`if (err) goto out;`): the earlier statement
-                             that assigns it, i.e. the call whose failure went unchecked
-            init_use         inserted reset / zeroing of X (`p->f = NULL;`, `memset(&s, 0, ...)`): the earlier
-                             free of X that left it dangling, else the next use of X
-            release_acquire  inserted free/put of X: the earlier statement that assigns X; unlock of L:
-                             the earlier lock of L
-            lock_region      inserted lock ... unlock pair: the statements it now protects
-            jump_enclosing   inserted bare return/goto/break: the condition it now exits on
-            shared_ident     otherwise: nearest statement sharing the rarest identifiers with the group
+            guard_use_strict   inserted guard whose body ends in a jump (`if (cond) return/goto/break/
+                               continue;`): first later use of a `cond` variable
+            guard_use_relaxed  any other inserted `if (cond)`: first later use of a `cond` variable
+            status_def         guard on a status variable only (`if (err) goto out;`): the earlier statement
+                               that assigns it, i.e. the call whose failure went unchecked
+            init_use           inserted reset / zeroing of X (`p->f = NULL;`, `memset(&s, 0, ...)`): the earlier
+                               free of X that left it dangling, else the next use of X
+            release_acquire    inserted free/put of X: the earlier statement that assigns X; unlock of L:
+                               the earlier lock of L
+            lock_region        inserted lock ... unlock pair: the statements it now protects
+            jump_enclosing     inserted bare return/goto/break: the condition it now exits on
+            shared_ident       otherwise: nearest statement sharing the rarest identifiers with the group
        anchor_next        : nothing shares an identifier -> the next before-statement after the insertion
        anchor_prev        : insertion at the end of the function -> the previous statement
   move                    -> only when the fix has no delete / update / insert (a pure reordering), as
@@ -38,8 +37,7 @@ from .langs import LangSpec
 from .tsparse import Function, Unit, identifiers
 
 _GUARD_HDR = re.compile(r"^(?:else\s+)?if\b")
-_SINK_KINDS_ORDER = {"deleted": 0, "updated": 1, "anchor_guarded_use": 2, "anchor_dataflow": 3,
-                     "anchor_next": 4, "anchor_prev": 5}
+_SINK_KINDS_ORDER = {"deleted": 0, "updated": 1, "anchor_dataflow": 2, "anchor_next": 3, "anchor_prev": 4}
 
 # Variables that only carry a status code. A guard on them protects nothing later in the
 # function; what it fixes is the unchecked call that set them.
@@ -331,10 +329,7 @@ def sink_candidates(before: Function, after: Function, actions: list[EditAction]
             strict = _inserted_guard(after, actions, a, spec) is not None
             hit = bv.forward(start, [n for n in names if n not in _STATUS_NAMES] or names)
             if hit:
-                if strict:
-                    flow(hit[0], None, hit[1], kind="anchor_guarded_use")
-                else:
-                    flow(hit[0], "guard_use", hit[1])
+                flow(hit[0], "guard_use_strict" if strict else "guard_use_relaxed", hit[1])
                 done = True
         if done:
             continue

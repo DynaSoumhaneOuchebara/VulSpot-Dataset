@@ -3,6 +3,7 @@
 
     HF_TOKEN=... python 07_upload_hf.py
     python 07_upload_hf.py --dry-run
+    python 07_upload_hf.py --tag v2026-10-12   # also tag the resulting commit (one tag per release)
 
 Does not upload data/raw/.
 """
@@ -56,6 +57,7 @@ def main() -> None:
     ap.add_argument("--config", default=None)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--message", default="Update VulSpot dataset artifacts")
+    ap.add_argument("--tag", default=None, help="tag the uploaded commit (or the current head if nothing changed)")
     args = ap.parse_args()
     cfg = load_config(args.config)
     log = get_logger("07_upload_hf", cfg.paths.logs)
@@ -101,16 +103,26 @@ def main() -> None:
     if readme.exists():
         ops.append(CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=str(readme)))
 
-    if not ops:
+    revision = "main"
+    if ops:
+        info = api.create_commit(
+            repo_id=repo_id,
+            repo_type="dataset",
+            operations=ops,
+            commit_message=args.message,
+        )
+        revision = info.oid
+        log.info("https://huggingface.co/datasets/%s (commit %s)", repo_id, revision)
+    else:
         log.info("nothing to upload")
-        return
-    api.create_commit(
-        repo_id=repo_id,
-        repo_type="dataset",
-        operations=ops,
-        commit_message=args.message,
-    )
-    log.info("https://huggingface.co/datasets/%s", repo_id)
+    if args.tag:
+        tags = {t.name for t in api.list_repo_refs(repo_id, repo_type="dataset").tags}
+        if args.tag in tags:
+            log.info("tag %s already exists; left unchanged", args.tag)
+        else:
+            api.create_tag(repo_id, tag=args.tag, revision=revision, repo_type="dataset",
+                           tag_message=args.message)
+            log.info("tagged %s as %s", revision, args.tag)
 
 
 if __name__ == "__main__":

@@ -121,7 +121,7 @@ def main() -> None:
     mac = [r for r in rows if r["func_name"] == "mlx4_register_mac" and r["is_vulnerable"]]
     assert mac, "mlx4_register_mac vulnerable row missing"
     sinks = json.loads(mac[0]["sink_candidates"])
-    guard = [s for s in sinks if s["kind"] == "anchor_guarded_use"]
+    guard = [s for s in sinks if s["kind"] == "anchor_dataflow" and s.get("anchor_rule") == "guard_use_strict"]
     if guard and "free" in guard[0]["text"]:
         print(f"OK   mlx4_register_mac guard anchor -> L{guard[0]['abs_line']} {guard[0]['text']!r} (guard ident {guard[0]['guard_ident']})")
     else:

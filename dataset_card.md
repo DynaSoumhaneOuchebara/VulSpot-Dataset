@@ -28,9 +28,26 @@ It follows the SecVulEval collection pipeline (NVD CVEs with a `Patch` tag, GitH
 ```python
 from datasets import load_dataset
 
-cpp = load_dataset("DynaOuchebara/VulSpot", "cpp", split="full")
-multi = load_dataset("DynaOuchebara/VulSpot", "multi", split="full")
+cpp = load_dataset("ods01/VulSpot", "cpp", split="full")
+multi = load_dataset("ods01/VulSpot", "multi", split="full")
 ```
+
+## Releases
+
+> **Paper reference release: [`v2026-10-12`](https://huggingface.co/datasets/ods01/VulSpot/tree/v2026-10-12)** (CVEs published through 2026-10-12). This is the version described and evaluated in the paper; use it for reproducibility studies.
+
+```python
+cpp = load_dataset("ods01/VulSpot", "cpp", split="full", revision="v2026-10-12")
+```
+
+VulSpot is updated every month. Each release is a tag of this repository named after the last NVD publication day it covers (`v<YYYY-MM-DD>`), and loading without `revision` gives the latest one. Releases appear in the branch selector of the *Files and versions* tab, and can be listed with:
+
+```python
+from huggingface_hub import list_repo_refs
+print(sorted(t.name for t in list_repo_refs("ods01/VulSpot", repo_type="dataset").tags))
+```
+
+The split files of a release are fetched the same way, e.g. `hf_hub_download("ods01/VulSpot", "cpp/full/splits/chrono.json", repo_type="dataset", revision="v2026-10-12")`. Each release's `version.json` records the window it covers.
 
 ## Configs
 
@@ -60,7 +77,7 @@ Chronological and project-holdout index files live next to the parquet (`splits/
 Two localization layers:
 
 - `changed_lines` / `changed_statements` (`fix_*`): SecVulEval semantics. On a vulnerable row these are the **deleted/updated** statements; on a fixed row, the **added/updated** ones. Serialized as JSON strings `[[line, text], ...]` with file-absolute line numbers so existing SecVulEval loaders work.
-- `sink_candidates` (vulnerable rows only): deleted + updated statements, plus one anchor per group of consecutive inserted statements, in the vulnerable version. `anchor_guarded_use`: for an inserted guard `if (...) return/goto/break/continue`, the first later use of a guard identifier. `anchor_dataflow`: the statement tied to the inserted code by a shared variable, with the rule in `anchor_rule` (`guard_use`, `status_def`, `init_use`, `release_acquire`, `lock_region`, `jump_enclosing`, `shared_ident`). `anchor_next` / `anchor_prev`: the neighbouring statement, only when nothing shares an identifier. A fix that only reorders statements gets `anchor_dataflow` entries too: `move_early` on a statement moved later (it ran too early), `move_crossed` on the first statement a statement moved earlier jumped over and shares an identifier with. Each entry has abs/rel line, byte range, text, and `kind`.
+- `sink_candidates` (vulnerable rows only): deleted + updated statements, plus one anchor per group of consecutive inserted statements, in the vulnerable version. `anchor_dataflow`: the statement tied to the inserted code by a shared variable, with the rule in `anchor_rule`: `guard_use_strict` (inserted guard `if (...) return/goto/break/continue`: the first later use of a guard identifier), `guard_use_relaxed` (any other inserted `if`, same lookup), `status_def`, `init_use`, `release_acquire`, `lock_region`, `jump_enclosing`, `shared_ident`. `anchor_next` / `anchor_prev`: the neighbouring statement, only when nothing shares an identifier. A fix that only reorders statements gets `anchor_dataflow` entries too: `move_early` on a statement moved later (it ran too early), `move_crossed` on the first statement a statement moved earlier jumped over and shares an identifier with. Each entry has abs/rel line, byte range, text, and `kind`.
 
 `is_vulnerable` is the function-level flag. `cwe_list` is the raw NVD CWE list.
 

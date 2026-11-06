@@ -85,7 +85,7 @@ def main() -> None:
     print("units before:", [(u.kind, u.start_line, u.text[:60]) for u in bf.units if u.is_code])
     print("actions:", [(a.action, a.before_text, a.after_text) for a in actions if a.action != "unchanged"])
     print("sinks:", [(s.kind, s.abs_line, s.text, s.guard_ident) for s in sinks])
-    guard = [s for s in sinks if s.kind == "anchor_guarded_use"]
+    guard = [s for s in sinks if s.kind == "anchor_dataflow" and s.anchor_rule == "guard_use_strict"]
     assert any(a.action == "insert" for a in actions), "expected an insert for the new if (free < 0)"
     assert guard, f"expected guard-anchor sink, got {sinks}"
     assert "free" in guard[0].text, guard[0]

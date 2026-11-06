@@ -1,9 +1,9 @@
 #!/bin/bash
-# One stage of the six-month VulSpot update. The stage script submits the next
+# One stage of the monthly VulSpot update. The stage script submits the next
 # stage when this one finishes. Near the time limit it resubmits itself so a
 # long commit fetch continues from the commits already stored.
 #
-#   sbatch --export=ALL,VULSPOT_UPDATE_STAGE=nvd,VULSPOT_CUTOFF_DAY=2027-04-12 \
+#   sbatch --export=ALL,VULSPOT_UPDATE_STAGE=nvd,VULSPOT_CUTOFF_DAY=2026-11-12 \
 #     jobs/update_cycle.sbatch
 #
 # Tokens are read at start from secrets.env or the environment. Do not put

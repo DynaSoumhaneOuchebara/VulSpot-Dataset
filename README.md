@@ -3,7 +3,16 @@
 Statement-level dataset pipeline for vulnerability **detection**, **CWE classification**, and **localization**.
 Replicates SecVulEval §3.1–3.3 (through today) and adds AST diffs, sink-candidate anchors, confidence tiers, untouched negatives, and deterministic context. No LLM §3.4 context.
 
-Hugging Face: [DynaOuchebara/VulSpot](https://huggingface.co/datasets/DynaOuchebara/VulSpot) (configs `cpp` and `multi`).
+Hugging Face: [ods01/VulSpot](https://huggingface.co/datasets/ods01/VulSpot) (configs `cpp` and `multi`).
+
+## Paper reference release
+
+The paper describes and evaluates release **`v2026-10-12`** (CVEs published through 2026-10-12):
+
+- data: Hugging Face tag [`v2026-10-12`](https://huggingface.co/datasets/ods01/VulSpot/tree/v2026-10-12), loaded with `load_dataset("ods01/VulSpot", "cpp", revision="v2026-10-12")`;
+- code that built it: git tag [`v2026-10-12`](https://github.com/DynaSoumhaneOuchebara/VulSpot-Dataset/releases/tag/v2026-10-12) of this repository.
+
+Later monthly releases are tagged `v<cutoff day>` on Hugging Face (see [Update every month](#update-every-month)).
 
 ## Setup
 
@@ -25,13 +34,13 @@ export HF_TOKEN=...         # required for stage 7
 | `04_extract_functions.py` | 3 functions + diffs | no | `data/interim/functions.jsonl.gz` |
 | `05_filter_build.py` | 4–5 filter, dedup, splits | no | `data/out/{cpp,multi}/{full,balanced,paired}/` |
 | `06_report.py` | report | no | `data/out/report.md` |
-| `07_upload_hf.py` | 6 Hub upload | yes | `DynaOuchebara/VulSpot` |
+| `07_upload_hf.py` | 6 Hub upload | yes | `ods01/VulSpot` |
 
 Everything is resumable from cache. Re-run a stage after a crash; completed NVD windows and commits with a final `meta.json` status are skipped. A later `--cutoff YYYY-MM-DD` includes that whole UTC day. Publication windows already stored are kept, and the window that stopped at the previous cutoff is fetched again so nothing between the two dates is missed. `version.json` records `covered_through`.
 
-## Update every six months
+## Update every month
 
-The dataset on disk is covered through the last NVD publication window (`covered_through` in `data/out/version.json`). The next unattended run is six months after that day. It collects CVEs published after `covered_through` through the scheduled day, rebuilds `cpp` and `multi` (`full`, `balanced`, `paired`), and uploads the changed files.
+The dataset on disk is covered through the last NVD publication window (`covered_through` in `data/out/version.json`). The next unattended run is one month after that day. It collects CVEs published after `covered_through` through the scheduled day, rebuilds `cpp` and `multi` (`full`, `balanced`, `paired`), and uploads the changed files.
 
 Put `NVD_API_KEY`, `GITHUB_TOKEN`, and `HF_TOKEN` in `secrets.env` (mode 600, not committed). Then:
 
@@ -40,7 +49,7 @@ bash jobs/schedule_update.sh --dry-run   # print the window and the submit comma
 bash jobs/schedule_update.sh             # submit the SLURM job
 ```
 
-A run that reaches the 24-hour job limit resubmits the same stage and continues from cache. After a successful upload it submits the following update, another six months out. `bash jobs/update_cycle.sh all` runs one update in the foreground instead.
+A run that reaches the 24-hour job limit resubmits the same stage and continues from cache. After a successful upload it submits the following update, another month out. Before rebuilding, the build stage copies the previous version to `snapshots/out_<covered_through>` next to `out/`, and the upload tags the Hugging Face commit `v<cutoff day>`, so every release can be loaded with `revision="v2026-10-12"`. `bash jobs/update_cycle.sh all` runs one update in the foreground instead.
 
 ## Offline extractor check (before any network stage)
 

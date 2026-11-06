@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Arm the next dataset update, six months after the version already on disk.
+# Arm the next dataset update, one month after the version already on disk.
 #
 #   bash jobs/schedule_update.sh            # submit the SLURM job
 #   bash jobs/schedule_update.sh --dry-run  # print the window and the sbatch command
 #
 # The current covered_through date comes from data/out/version.json, or, the
 # first time, from the last NVD publication window. The job runs on that date
-# plus six months and collects through that day.
+# plus one month and collects through that day.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
