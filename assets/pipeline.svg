@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="262" viewBox="0 0 880 262" role="img" aria-label="VulSpot construction pipeline in eight stages, refreshed every month">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/>
+    </marker>
+  </defs>
+  <style>
+    .t { font-family: Inter, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 700; fill: #1f2a44; }
+    .s { font-family: Inter, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 11px; fill: #3d4654; }
+    .l { font-family: Inter, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 11.5px; font-weight: 600; fill: #3d4654; }
+    .ln { stroke: #57606a; stroke-width: 1.6; fill: none; }
+  </style>
+  <rect x="1" y="1" width="878" height="260" rx="14" fill="#ffffff" stroke="#d0d7de"/>
+
+  <!-- legend -->
+  <rect x="48" y="18" width="12" height="12" rx="3" fill="#dbeafe" stroke="#60a5fa"/><text x="66" y="28" class="l">Collection</text>
+  <rect x="148" y="18" width="12" height="12" rx="3" fill="#ffedd5" stroke="#fb923c"/><text x="166" y="28" class="l">Labeling</text>
+  <rect x="238" y="18" width="12" height="12" rx="3" fill="#dcfce7" stroke="#4ade80"/><text x="256" y="28" class="l">Release</text>
+
+  <!-- row 1 -->
+  <g>
+    <rect x="48" y="44" width="176" height="74" rx="9" fill="#dbeafe" stroke="#60a5fa"/>
+    <text x="62" y="68" class="t">1 · CVEs</text>
+    <text x="62" y="88" class="s">NVD API 2.0, all non-rejected</text>
+    <text x="62" y="104" class="s">CVEs up to the cutoff</text>
+
+    <rect x="256" y="44" width="176" height="74" rx="9" fill="#dbeafe" stroke="#60a5fa"/>
+    <text x="270" y="68" class="t">2 · Patch links</text>
+    <text x="270" y="88" class="s">Patch-tagged references to</text>
+    <text x="270" y="104" class="s">GitHub and git.kernel.org</text>
+
+    <rect x="464" y="44" width="176" height="74" rx="9" fill="#dbeafe" stroke="#60a5fa"/>
+    <text x="478" y="68" class="t">3 · Commits</text>
+    <text x="478" y="88" class="s">message, diff, files; no merges,</text>
+    <text x="478" y="104" class="s">backports, multi-commit CVEs</text>
+
+    <rect x="672" y="44" width="176" height="74" rx="9" fill="#ffedd5" stroke="#fb923c"/>
+    <text x="686" y="68" class="t">4 · Functions</text>
+    <text x="686" y="88" class="s">tree-sitter parsing,</text>
+    <text x="686" y="104" class="s">before / after pairing</text>
+  </g>
+
+  <!-- row 2 (right to left) -->
+  <g>
+    <rect x="672" y="160" width="176" height="74" rx="9" fill="#ffedd5" stroke="#fb923c"/>
+    <text x="686" y="184" class="t">5 · Labels</text>
+    <text x="686" y="204" class="s">statement edit scripts, sink</text>
+    <text x="686" y="220" class="s">candidates, confidence tiers</text>
+
+    <rect x="464" y="160" width="176" height="74" rx="9" fill="#ffedd5" stroke="#fb923c"/>
+    <text x="478" y="184" class="t">6 · Enrichment</text>
+    <text x="478" y="204" class="s">dedup, clone groups,</text>
+    <text x="478" y="220" class="s">AST context, CWE views</text>
+
+    <rect x="256" y="160" width="176" height="74" rx="9" fill="#dcfce7" stroke="#4ade80"/>
+    <text x="270" y="184" class="t">7 · Release</text>
+    <text x="270" y="204" class="s">cpp / multi × full, balanced,</text>
+    <text x="270" y="220" class="s">paired; leak-free splits</text>
+
+    <rect x="48" y="160" width="176" height="74" rx="9" fill="#dcfce7" stroke="#4ade80"/>
+    <text x="62" y="184" class="t">8 · Upload</text>
+    <text x="62" y="204" class="s">Parquet on Hugging Face,</text>
+    <text x="62" y="220" class="s">tagged v&lt;cutoff day&gt;</text>
+  </g>
+
+  <!-- arrows -->
+  <line x1="224" y1="81" x2="254" y2="81" class="ln" marker-end="url(#a)"/>
+  <line x1="432" y1="81" x2="462" y2="81" class="ln" marker-end="url(#a)"/>
+  <line x1="640" y1="81" x2="670" y2="81" class="ln" marker-end="url(#a)"/>
+  <line x1="760" y1="118" x2="760" y2="158" class="ln" marker-end="url(#a)"/>
+  <line x1="672" y1="197" x2="642" y2="197" class="ln" marker-end="url(#a)"/>
+  <line x1="464" y1="197" x2="434" y2="197" class="ln" marker-end="url(#a)"/>
+  <line x1="256" y1="197" x2="226" y2="197" class="ln" marker-end="url(#a)"/>
+
+  <!-- monthly loop -->
+  <path d="M48,197 L24,197 L24,81 L46,81" fill="none" stroke="#0f766e" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#t)"/>
+  <text x="0" y="0" transform="translate(18,139) rotate(-90)" text-anchor="middle" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#0f766e">every month</text>
+</svg>

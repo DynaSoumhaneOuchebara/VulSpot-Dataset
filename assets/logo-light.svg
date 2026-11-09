@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="120" viewBox="0 0 360 120" role="img" aria-label="VulSpot logo">
+  <rect x="8" y="12" width="96" height="96" rx="22" fill="#1f2a44"/>
+  <rect x="24" y="31" width="46" height="7" rx="3.5" fill="#7d8bab"/>
+  <rect x="32" y="46" width="52" height="7" rx="3.5" fill="#3fb68b"/>
+  <rect x="32" y="61" width="36" height="9" rx="4.5" fill="#f28c28"/>
+  <rect x="24" y="78" width="30" height="7" rx="3.5" fill="#7d8bab"/>
+  <circle cx="68" cy="65.5" r="17" fill="none" stroke="#ffd166" stroke-width="4"/>
+  <line x1="68" y1="42" x2="68" y2="50" stroke="#ffd166" stroke-width="4" stroke-linecap="round"/>
+  <line x1="68" y1="81" x2="68" y2="89" stroke="#ffd166" stroke-width="4" stroke-linecap="round"/>
+  <line x1="91.5" y1="65.5" x2="83.5" y2="65.5" stroke="#ffd166" stroke-width="4" stroke-linecap="round"/>
+  <text x="122" y="80" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="-1" fill="#1f2a44">Vul<tspan fill="#f28c28">Spot</tspan></text>
+</svg>
