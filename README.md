@@ -35,12 +35,12 @@ Most real-world vulnerability datasets link CVEs to their fixing commits and tre
 
 | | |
 |---|---|
-| 🎯 **Additive fixes localized** | *Sink candidates* anchor each group of inserted statements on the statement of the vulnerable version it is tied to by data flow. They localize **99.3%** of the functions that diff-based labels leave empty. |
-| 🏷️ **Reliability-aware labels** | Instead of a hard filter, each vulnerable label has a **confidence tier** and each negative has a **provenance type**. Both are computed by rules, without LLMs. |
-| 🧱 **Leakage-aware evaluation** | **Clone-aware** chronological and project-holdout splits, plus high-confidence, paired, and non-Linux test subsets. Under a random row split, 57% of vulnerable test functions have a near-duplicate in training. Under VulSpot's splits, none do. |
-| 🐧 **Control of the Linux shift** | A `balanced` variant caps the post-2024 kernel CVEs that would otherwise make up 75% of the C/C++ positives. |
-| 🧭 **Richer annotations** | Deterministic AST-retrieved context (callees, types, macros, globals) and four hierarchical **CWE views** (CWE-1000, -1003, -699, -1400). |
-| 🔄 **Living dataset** | A resumable pipeline rebuilds and republishes VulSpot **every month**. Each release adds vulnerabilities disclosed after current models' training cutoffs. |
+|  **Additive fixes localized** | *Sink candidates* anchor each group of inserted statements on the statement of the vulnerable version it is tied to by data flow. They localize **99.3%** of the functions that diff-based labels leave empty. |
+|  **Reliability-aware labels** | Instead of a hard filter, each vulnerable label has a **confidence tier** and each negative has a **provenance type**. Both are computed by rules, without LLMs. |
+|  **Leakage-aware evaluation** | **Clone-aware** chronological and project-holdout splits, plus high-confidence, paired, and non-Linux test subsets. Under a random row split, 57% of vulnerable test functions have a near-duplicate in training. Under VulSpot's splits, none do. |
+|  **Control of the Linux shift** | A `balanced` variant caps the post-2024 kernel CVEs that would otherwise make up 75% of the C/C++ positives. |
+|  **Richer annotations** | Deterministic AST-retrieved context (callees, types, macros, globals) and four hierarchical **CWE views** (CWE-1000, -1003, -699, -1400). |
+|  **Living dataset** | A resumable pipeline rebuilds and republishes VulSpot **every month**. Each release adds vulnerabilities disclosed after current models' training cutoffs. |
 
 ## 📊 Dataset at a glance
 
